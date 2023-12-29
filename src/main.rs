@@ -8,9 +8,14 @@ use components::{
 	Enemy, Explosion, ExplosionTimer, ExplosionToSpawn, FromEnemy, FromPlayer, Laser, Movable,
 	Player, SpriteSize, Velocity,
 };
+use bevy_egui::{egui, EguiContexts, EguiPlugin};
+use rustpython_vm as vm;
+use vm::{builtins::PyCode, PyRef};
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use enemy::EnemyPlugin;
 use player::PlayerPlugin;
-use std::collections::HashSet;
+use std::{collections::HashSet, f32::consts::PI};
 
 mod components;
 mod enemy;
@@ -18,17 +23,18 @@ mod player;
 
 // region:    --- Asset Constants
 
-const PLAYER_SPRITE: &str = "player_a_01.png";
+const PLAYER_SPRITE: &str = "lighter_nose.png";
 const PLAYER_SIZE: (f32, f32) = (144., 75.);
 const PLAYER_LASER_SPRITE: &str = "laser_a_01.png";
 const PLAYER_LASER_SIZE: (f32, f32) = (9., 54.);
 
-const ENEMY_SPRITE: &str = "enemy_a_01.png";
+const ENEMY_SPRITE: &str = "organic_enemy.png";
 const ENEMY_SIZE: (f32, f32) = (144., 75.);
 const ENEMY_LASER_SPRITE: &str = "laser_b_01.png";
 const ENEMY_LASER_SIZE: (f32, f32) = (17., 55.);
 
 const EXPLOSION_SHEET: &str = "explo_a_sheet.png";
+const EXPLOSION_ENGINE_SHEET: &str = "explo_b_sheet.png";
 const EXPLOSION_LEN: usize = 16;
 
 const SPRITE_SCALE: f32 = 0.5;
@@ -37,7 +43,9 @@ const SPRITE_SCALE: f32 = 0.5;
 
 // region:    --- Game Constants
 
-const BASE_SPEED: f32 = 500.;
+const BASE_SPEED: f32 = 200.;
+const BASE_ROT_SPEED: f32 = 10.;
+
 
 const PLAYER_RESPAWN_DELAY: f64 = 2.;
 const ENEMY_MAX: u32 = 2;
@@ -59,6 +67,24 @@ struct GameTextures {
 	enemy: Handle<Image>,
 	enemy_laser: Handle<Image>,
 	explosion: Handle<TextureAtlas>,
+	engine: Handle<TextureAtlas>
+}
+
+#[derive(Default, Resource)]
+pub struct UiState {
+    player_code: String,
+}
+
+#[derive(Resource)]
+pub struct CodePilotCode {
+    compiled: Option<PyRef<PyCode>>,
+}
+impl Default for CodePilotCode {
+	fn default() -> Self {
+		Self {
+			compiled: None
+		}
+	}
 }
 
 #[derive(Resource)]
@@ -88,28 +114,46 @@ impl PlayerState {
 		self.last_shot = -1.;
 	}
 }
+
 // endregion: --- Resources
 
 fn main() {
 	App::new()
 		.insert_resource(ClearColor(Color::rgb(0.04, 0.04, 0.04)))
+		.init_resource::<UiState>()
+		.init_resource::<CodePilotCode>()
 		.add_plugins(DefaultPlugins.set(WindowPlugin {
 			primary_window: Some(Window {
-				title: "Rust Invaders!".into(),
-				resolution: (598., 676.).into(),
+				title: "Codepilot".into(),
+				resolution: (1400., 800.).into(),
 				..Default::default()
 			}),
 			..Default::default()
 		}))
+		.add_plugins(EguiPlugin)
 		.add_plugins(PlayerPlugin)
 		.add_plugins(EnemyPlugin)
 		.add_systems(Startup, setup_system)
-		.add_systems(Update, movable_system)
+			.add_systems(Update, movable_system)
 		.add_systems(Update, player_laser_hit_enemy_system)
 		.add_systems(Update, enemy_laser_hit_player_system)
 		.add_systems(Update, explosion_to_spawn_system)
 		.add_systems(Update, explosion_animation_system)
+		.add_systems(Update, ui_example_system)
 		.run();
+}
+
+fn ui_example_system(
+	mut ui_state: ResMut<UiState>,
+	mut contexts: EguiContexts) {
+	let ctx = contexts.ctx_mut();
+
+    egui::TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
+        ui.horizontal(|ui| {
+			ui.label("Write something: ");
+			ui.code_editor(&mut ui_state.player_code);
+		});
+    });
 }
 
 fn setup_system(
@@ -135,10 +179,15 @@ fn setup_system(
 	commands.insert_resource(win_size);
 
 	// create explosion texture atlas
-	let texture_handle = asset_server.load(EXPLOSION_SHEET);
-	let texture_atlas =
-		TextureAtlas::from_grid(texture_handle, Vec2::new(64., 64.), 4, 4, None, None);
-	let explosion = texture_atlases.add(texture_atlas);
+	let expl_texture_handle = asset_server.load(EXPLOSION_SHEET);
+	let expl_texture_atlas =
+		TextureAtlas::from_grid(expl_texture_handle, Vec2::new(64., 64.), 4, 4, None, None);
+	let explosion = texture_atlases.add(expl_texture_atlas);
+
+	let eng_texture_handle = asset_server.load(EXPLOSION_ENGINE_SHEET);
+	let eng_texture_atlas =
+		TextureAtlas::from_grid(eng_texture_handle, Vec2::new(64., 64.), 4, 4, None, None);
+	let engine = texture_atlases.add(eng_texture_atlas);
 
 	// add GameTextures resource
 	let game_textures = GameTextures {
@@ -147,6 +196,7 @@ fn setup_system(
 		enemy: asset_server.load(ENEMY_SPRITE),
 		enemy_laser: asset_server.load(ENEMY_LASER_SPRITE),
 		explosion,
+		engine
 	};
 	commands.insert_resource(game_textures);
 	commands.insert_resource(EnemyCount(0));
@@ -156,24 +206,41 @@ fn movable_system(
 	mut commands: Commands,
 	time: Res<Time>,
 	win_size: Res<WinSize>,
+	ui_state: Res<UiState>,
 	mut query: Query<(Entity, &Velocity, &mut Transform, &Movable)>,
 ) {
 	let delta = time.delta_seconds();
 
 	for (entity, velocity, mut transform, movable) in &mut query {
-		let translation = &mut transform.translation;
-		translation.x += velocity.x * delta * BASE_SPEED;
-		translation.y += velocity.y * delta * BASE_SPEED;
+		transform.translation.x += velocity.x * delta * BASE_SPEED;
+		transform.translation.y += velocity.y * delta * BASE_SPEED;
+
+		transform.rotate_z(
+			velocity.omega * delta * BASE_ROT_SPEED
+		);
 
 		if movable.auto_despawn {
 			// despawn when out of screen
 			const MARGIN: f32 = 200.;
-			if translation.y > win_size.h / 2. + MARGIN
-				|| translation.y < -win_size.h / 2. - MARGIN
-				|| translation.x > win_size.w / 2. + MARGIN
-				|| translation.x < -win_size.w / 2. - MARGIN
+			if transform.translation.y > win_size.h / 2. + MARGIN
+				|| transform.translation.y < -win_size.h / 2. - MARGIN
+				|| transform.translation.x > win_size.w / 2. + MARGIN
+				|| transform.translation.x < -win_size.w / 2. - MARGIN
 			{
 				commands.entity(entity).despawn();
+			}
+		} else {
+			// wrap on other side of screen
+			if transform.translation.y > win_size.h / 2. {
+				transform.translation.y = -win_size.h / 2.;
+			} else if transform.translation.y < -win_size.h / 2. {
+				transform.translation.y = win_size.h / 2.;
+			}
+
+			if transform.translation.x > win_size.w / 2. {
+				transform.translation.x = -win_size.w / 2.;
+			} else if transform.translation.x < -win_size.w / 2. {
+				transform.translation.x = win_size.w / 2.;
 			}
 		}
 	}
@@ -221,12 +288,14 @@ fn player_laser_hit_enemy_system(
 				despawned_entities.insert(enemy_entity);
 				enemy_count.0 -= 1;
 
-				// remove the laser
-				commands.entity(laser_entity).despawn();
-				despawned_entities.insert(laser_entity);
-
-				// spawn the explosionToSpawn
-				commands.spawn(ExplosionToSpawn(enemy_tf.translation));
+				commands.spawn((ExplosionToSpawn {
+					transform: Transform {
+						translation: enemy_tf.translation,
+						..Default::default()
+					},
+					duration: 0.05,
+					is_engine: false
+				},));
 			}
 		}
 	}
@@ -264,7 +333,14 @@ fn enemy_laser_hit_player_system(
 				commands.entity(laser_entity).despawn();
 
 				// spawn the explosionToSpawn
-				commands.spawn(ExplosionToSpawn(player_tf.translation));
+				commands.spawn((ExplosionToSpawn {
+					transform: Transform {
+						translation: player_tf.translation,
+						..Default::default()
+					},
+					duration: 0.05,
+					is_engine: false
+				},));
 
 				break;
 			}
@@ -278,18 +354,24 @@ fn explosion_to_spawn_system(
 	query: Query<(Entity, &ExplosionToSpawn)>,
 ) {
 	for (explosion_spawn_entity, explosion_to_spawn) in query.iter() {
+
+		let mut sprite_bundle = {
+			SpriteSheetBundle {
+				texture_atlas: if (explosion_to_spawn.is_engine) {game_textures.engine.clone()} else {game_textures.explosion.clone()},
+				transform: explosion_to_spawn.transform.clone(),
+				..Default::default()
+			}
+		};
+
+		if (explosion_to_spawn.is_engine) {
+			sprite_bundle.sprite.index = 6;
+		}
+
 		// spawn the explosion sprite
 		commands
-			.spawn(SpriteSheetBundle {
-				texture_atlas: game_textures.explosion.clone(),
-				transform: Transform {
-					translation: explosion_to_spawn.0,
-					..Default::default()
-				},
-				..Default::default()
-			})
+			.spawn(sprite_bundle)
 			.insert(Explosion)
-			.insert(ExplosionTimer::default());
+			.insert(ExplosionTimer::new(explosion_to_spawn.duration));
 
 		// despawn the explosionToSpawn
 		commands.entity(explosion_spawn_entity).despawn();

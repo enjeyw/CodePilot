@@ -1,12 +1,15 @@
 use bevy::math::{Vec2, Vec3};
 use bevy::prelude::Component;
+use bevy::sprite::SpriteSheetBundle;
 use bevy::time::{Timer, TimerMode};
+use bevy::transform::components::Transform;
 
 // region:    --- Common Components
 #[derive(Component)]
 pub struct Velocity {
 	pub x: f32,
 	pub y: f32,
+	pub omega: f32
 }
 
 #[derive(Component)]
@@ -49,14 +52,24 @@ pub struct FromEnemy;
 pub struct Explosion;
 
 #[derive(Component)]
-pub struct ExplosionToSpawn(pub Vec3);
+pub struct ExplosionToSpawn {
+	pub transform: Transform,
+	pub duration: f32,
+	pub is_engine: bool,
+}
 
 #[derive(Component)]
 pub struct ExplosionTimer(pub Timer);
 
+impl ExplosionTimer {
+	pub fn new(duration: f32) -> Self {
+		Self(Timer::from_seconds(duration, TimerMode::Repeating))
+	}
+}
+
 impl Default for ExplosionTimer {
 	fn default() -> Self {
-		Self(Timer::from_seconds(0.05, TimerMode::Repeating))
+		Self(Timer::from_seconds(0.01, TimerMode::Repeating))
 	}
 }
 // endregion: --- Explosion Components

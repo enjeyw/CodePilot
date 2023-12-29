@@ -1,14 +1,16 @@
 [package]
-name = "invaders"
+name = "codepilot"
 version = "0.3.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
 rand = "0.8.5"
+bevy_egui = "0.24.0"
+rustpython-vm = "0.3.0"
 
 [dependencies.bevy]
-version = "0.11.3"
+version = "0.12.1"
 features = [
     "bevy_asset",
     "bevy_audio",
@@ -21,10 +23,17 @@ features = [
     "png",
     "vorbis",
     "x11",
-    "filesystem_watcher",
     "default_font",
     "webgl2",
 ]
+
+[dependencies.rustpython]
+version = "0.3.0"
+default-features = false
+features = [
+    "threading"
+]
+
 
 [workspace]
 resolver = "2" # Important! wgpu/Bevy needs this!

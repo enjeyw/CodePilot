@@ -13,6 +13,7 @@ use rustpython::vm::{
 };
 use vm::convert::ToPyObject;
 use std::f32::consts::PI;
+use std::fmt::Result;
 use std::time::Duration;
 
 pub struct PlayerPlugin;
@@ -67,47 +68,67 @@ fn player_spawn_system(
 	}
 }
 
+fn try_fire_weapon(
+	commands: &mut Commands,
+	game_textures: Res<GameTextures>,
+	player_tf: &Transform,
+	mut player_state: ResMut<PlayerState>,
+
+) -> bool {
+
+	if player_state.weapon_cooldown > 0. {
+		return false;
+	}
+
+	let (x, y) = (player_tf.translation.x, player_tf.translation.y);
+	let x_offset = PLAYER_SIZE.0 / 2. * SPRITE_SCALE - 5.;
+
+	let mut spawn_laser = |x_offset: f32| {
+		let velocity = player_tf.rotation * Vec3::X * 10.0;
+
+		commands
+			.spawn(SpriteBundle {
+				texture: game_textures.player_laser.clone(),
+				transform: Transform {
+					translation: Vec3::new(x + x_offset, y, 0.),
+					scale: Vec3::new(SPRITE_SCALE, SPRITE_SCALE, 1.),
+					rotation: player_tf.rotation
+				},
+				..Default::default()
+			})
+			.insert(Laser)
+			.insert(FromPlayer)
+			.insert(SpriteSize::from(PLAYER_LASER_SIZE))
+			.insert(Movable { auto_despawn: true })
+			.insert(Velocity { x: velocity.x, y: velocity.y, omega: 0.});
+	};
+
+	spawn_laser(0.);
+
+	player_state.weapon_cooldown = player_state.weapon_cooldown_max;
+
+	return true;
+}
+
 fn player_fire_system(
 	mut commands: Commands,
 	kb: Res<Input<KeyCode>>,
 	game_textures: Res<GameTextures>,
+	mut player_state: ResMut<PlayerState>,
 	query: Query<&Transform, With<Player>>,
 ) {
 	if let Ok(player_tf) = query.get_single() {
 		if kb.just_pressed(KeyCode::Space) {
-			let (x, y) = (player_tf.translation.x, player_tf.translation.y);
-			let x_offset = PLAYER_SIZE.0 / 2. * SPRITE_SCALE - 5.;
-
-			let mut spawn_laser = |x_offset: f32| {
-				let velocity = player_tf.rotation * Vec3::X * 10.0;
-
-				commands
-					.spawn(SpriteBundle {
-						texture: game_textures.player_laser.clone(),
-						transform: Transform {
-							translation: Vec3::new(x + x_offset, y, 0.),
-							scale: Vec3::new(SPRITE_SCALE, SPRITE_SCALE, 1.),
-							rotation: player_tf.rotation
-						},
-						..Default::default()
-					})
-					.insert(Laser)
-					.insert(FromPlayer)
-					.insert(SpriteSize::from(PLAYER_LASER_SIZE))
-					.insert(Movable { auto_despawn: true })
-					.insert(Velocity { x: velocity.x, y: velocity.y, omega: 0.});
-			};
-
-			spawn_laser(0.);
+			try_fire_weapon(&mut commands, game_textures, player_tf, player_state);
 		}
 	}
 }
 
 fn player_codepilot_system(
+	mut commands: Commands,
 	kb: Res<Input<KeyCode>>,
 	ui_state: Res<UiState>,	
 	mut codepilot_code: ResMut<CodePilotCode>,
-	mut commands: Commands,
 ) {
 
 	if kb.just_pressed(KeyCode::Return) {
@@ -135,7 +156,6 @@ fn player_codepilot_system(
 }
 
 
-
 #[derive(Debug, Clone)]
 struct PyAccessibleV3Vec(Vec<Vec3>);
 impl ToPyObject for PyAccessibleV3Vec {
@@ -150,11 +170,12 @@ impl ToPyObject for PyAccessibleV3Vec {
 }
 
 fn player_keyboard_event_system(
+	mut commands: Commands,
 	kb: Res<Input<KeyCode>>,
 	ui_state: Res<UiState>,
 	codepilot_code: Res<CodePilotCode>,
 	game_textures: Res<GameTextures>,
-	mut commands: Commands,
+	mut player_state: ResMut<PlayerState>,
 	mut query: Query<(&mut Velocity, &Transform), With<Player>>,
 	enemy_query: Query<(&Velocity, &Transform), (Without<Player>, With<Enemy>)>,
 ) {
@@ -221,30 +242,7 @@ fn player_keyboard_event_system(
 						info!("fire: {}", fire_bool);
 
 						if fire_bool {
-							let (x, y) = (transform.translation.x, transform.translation.y);
-							let x_offset = PLAYER_SIZE.0 / 2. * SPRITE_SCALE - 5.;
-
-							let mut spawn_laser = |x_offset: f32| {
-								let velocity = transform.rotation * Vec3::X * 10.0;
-
-								commands
-									.spawn(SpriteBundle {
-										texture: game_textures.player_laser.clone(),
-										transform: Transform {
-											translation: Vec3::new(x + x_offset, y, 0.),
-											scale: Vec3::new(SPRITE_SCALE, SPRITE_SCALE, 1.),
-											rotation: transform.rotation
-										},
-										..Default::default()
-									})
-									.insert(Laser)
-									.insert(FromPlayer)
-									.insert(SpriteSize::from(PLAYER_LASER_SIZE))
-									.insert(Movable { auto_despawn: true })
-									.insert(Velocity { x: velocity.x, y: velocity.y, omega: 0.});
-							};
-
-							spawn_laser(0.);
+							try_fire_weapon(&mut commands, game_textures, transform, player_state);
 						}
 					}
 				}

@@ -93,12 +93,17 @@ struct EnemyCount(u32);
 #[derive(Resource)]
 struct PlayerState {
 	on: bool,       // alive
+	weapon_cooldown: f32, // time until next shot
+	weapon_cooldown_max: f32, // time between shots
 	last_shot: f64, // -1 if not shot
+	
 }
 impl Default for PlayerState {
 	fn default() -> Self {
 		Self {
 			on: false,
+			weapon_cooldown: 0.,
+			weapon_cooldown_max: 1.,
 			last_shot: -1.,
 		}
 	}
@@ -140,6 +145,7 @@ fn main() {
 		.add_systems(Update, explosion_to_spawn_system)
 		.add_systems(Update, explosion_animation_system)
 		.add_systems(Update, ui_example_system)
+		.add_systems(Update, weapon_cooldown_system)
 		.run();
 }
 
@@ -239,12 +245,26 @@ fn movable_system(
 				transform.translation.y = win_size.h / 2.;
 			}
 
-			if transform.translation.x > win_size.w / 2. {
+			if transform.translation.x > win_size.w / 2. - 300. {
 				transform.translation.x = -win_size.w / 2.;
 			} else if transform.translation.x < -win_size.w / 2. {
-				transform.translation.x = win_size.w / 2.;
+				transform.translation.x = win_size.w / 2. - 300.;
 			}
 		}
+	}
+}
+
+//system for weapon cooldown
+fn weapon_cooldown_system(
+	mut player_state: ResMut<PlayerState>,
+	time: Res<Time>,
+) {
+	if player_state.weapon_cooldown > 0. {
+		player_state.weapon_cooldown -= time.delta_seconds();
+
+		if player_state.weapon_cooldown <= 0. {
+			info!("Ready to fire!");
+		} 
 	}
 }
 

@@ -148,8 +148,10 @@ fn ui_example_system(
 	mut contexts: EguiContexts) {
 	let ctx = contexts.ctx_mut();
 
-    egui::TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
-        ui.horizontal(|ui| {
+    egui::SidePanel::right("right_panel")
+	.min_width(300.0)
+	.show(ctx, |ui| {
+        ui.vertical(|ui| {
 			ui.label("Write something: ");
 			ui.code_editor(&mut ui_state.player_code);
 		});

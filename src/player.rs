@@ -1,11 +1,17 @@
-use crate::components::{FromPlayer, Laser, Movable, Player, SpriteSize, Velocity, ExplosionToSpawn};
+use crate::components::{FromPlayer, Laser, Movable, Player, SpriteSize, Velocity, ExplosionToSpawn, Enemy};
 use crate::{
 	GameTextures, PlayerState, WinSize, PLAYER_LASER_SIZE, PLAYER_RESPAWN_DELAY, PLAYER_SIZE,
-	SPRITE_SCALE, UiState, CodePilotCode
+	SPRITE_SCALE, UiState, CodePilotCode, enemy
 };
 use bevy::{prelude::*, ui};
 use bevy::time::common_conditions::on_timer;
 use rustpython_vm as vm;
+use vm::PyObjectRef;
+use vm::builtins::PyList;
+use rustpython::vm::{
+    pyclass, pymodule, PyObject, PyPayload, PyResult, TryFromBorrowedObject, VirtualMachine, stdlib
+};
+use vm::convert::ToPyObject;
 use std::f32::consts::PI;
 use std::time::Duration;
 
@@ -104,9 +110,15 @@ fn player_codepilot_system(
 	mut commands: Commands,
 ) {
 
-	if kb.pressed(KeyCode::Return) {
+	if kb.just_pressed(KeyCode::Return) {
 
-		let code_obj = vm::Interpreter::without_stdlib(Default::default()).enter(|vm| {
+		let mut settings = vm::Settings::default();
+		settings.path_list.push("Lib".to_owned());
+		let interp = vm::Interpreter::with_init(settings, |vm| {
+			vm.add_native_modules(stdlib::get_module_inits());
+		});
+
+		let code_obj = interp.enter(|vm| {
 			let scope = vm.new_scope_with_builtins();
 			let source = ui_state.player_code.as_str();
 			
@@ -122,13 +134,29 @@ fn player_codepilot_system(
 	}
 }
 
+
+
+#[derive(Debug, Clone)]
+struct PyAccessibleV3Vec(Vec<Vec3>);
+impl ToPyObject for PyAccessibleV3Vec {
+	fn to_pyobject(self, vm: &VirtualMachine) -> PyObjectRef {
+		let list: Vec<PyObjectRef>= self.0.into_iter().map(
+			|e| {
+				vm.new_pyobj((e.x, e.y, e.z))
+			} 
+		).collect();
+		PyList::new_ref(list, vm.as_ref()).to_pyobject(vm)
+	}
+}
+
 fn player_keyboard_event_system(
 	kb: Res<Input<KeyCode>>,
 	ui_state: Res<UiState>,
 	codepilot_code: Res<CodePilotCode>,
+	game_textures: Res<GameTextures>,
 	mut commands: Commands,
 	mut query: Query<(&mut Velocity, &Transform), With<Player>>,
-	enemy_query: Query<(&Velocity, &Transform), Without<Player>>,
+	enemy_query: Query<(&Velocity, &Transform), (Without<Player>, With<Enemy>)>,
 ) {
 	let acceleration = 0.05;
 	let ang_acceleration = 0.005;
@@ -138,12 +166,89 @@ fn player_keyboard_event_system(
 
 	if let Ok((mut velocity, transform)) = query.get_single_mut() {
 
+		// Convert all enemy velocity and positions to lists
+		let enemy_velocities: PyAccessibleV3Vec = PyAccessibleV3Vec(
+			enemy_query.iter().map(|(vel, _)| Vec3::new(vel.x, vel.y, vel.omega)).collect()
+		);
+
+		let enemy_positions: PyAccessibleV3Vec = PyAccessibleV3Vec(
+			enemy_query.iter().map(|(_, transform)| {
+				//get the enemy heading as f32 radians
+				let enemy_heading = transform.rotation.mul_vec3(Vec3::X).y.atan2(transform.rotation.mul_vec3(Vec3::X).x);
+
+				Vec3::new(transform.translation.x, transform.translation.y, enemy_heading)
+			}).collect()
+		);
+
 		if let Some(cpc) = codepilot_code.compiled.clone() {
+			
 			vm::Interpreter::without_stdlib(Default::default()).enter(|vm | {
 				let scope = vm.new_scope_with_builtins();
+
+				// Player heading as 2d vector
+				let heading = transform.rotation * Vec3::X;
+
+				// Set the player position
+				scope
+					.globals
+					.set_item("player_position", vm.new_pyobj((
+						transform.translation.x,
+						transform.translation.y,
+						heading[0],
+						heading[1],
+					)), vm);
 				
-				vm.run_code_obj(cpc, scope);
-		
+				// Set the player velocity
+				scope
+					.globals
+					.set_item("player_velocity", vm.new_pyobj((velocity.x, velocity.y, velocity.omega)), vm);
+
+				scope
+					.globals
+					.set_item("enemy_positions", vm.new_pyobj(enemy_positions), vm);
+
+				scope
+					.globals
+					.set_item("enemy_velocities", vm.new_pyobj(enemy_velocities), vm);
+				
+				vm.run_code_obj(cpc, scope.clone());
+
+				let fire = scope.globals.get_item("fire", vm);
+				
+				if let Ok(fire_ref) = fire.clone() {
+					let fire_bool_res = fire_ref.is_true(vm);
+					if let Ok(fire_bool) = fire_bool_res {
+						info!("fire: {}", fire_bool);
+
+						if fire_bool {
+							let (x, y) = (transform.translation.x, transform.translation.y);
+							let x_offset = PLAYER_SIZE.0 / 2. * SPRITE_SCALE - 5.;
+
+							let mut spawn_laser = |x_offset: f32| {
+								let velocity = transform.rotation * Vec3::X * 10.0;
+
+								commands
+									.spawn(SpriteBundle {
+										texture: game_textures.player_laser.clone(),
+										transform: Transform {
+											translation: Vec3::new(x + x_offset, y, 0.),
+											scale: Vec3::new(SPRITE_SCALE, SPRITE_SCALE, 1.),
+											rotation: transform.rotation
+										},
+										..Default::default()
+									})
+									.insert(Laser)
+									.insert(FromPlayer)
+									.insert(SpriteSize::from(PLAYER_LASER_SIZE))
+									.insert(Movable { auto_despawn: true })
+									.insert(Velocity { x: velocity.x, y: velocity.y, omega: 0.});
+							};
+
+							spawn_laser(0.);
+						}
+					}
+				}
+
 			});
 		}
 

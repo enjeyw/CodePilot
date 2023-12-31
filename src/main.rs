@@ -6,7 +6,7 @@ use bevy::sprite::collide_aabb::collide;
 use bevy::window::PrimaryWindow;
 use components::{
 	Enemy, Explosion, ExplosionTimer, ExplosionToSpawn, FromEnemy, FromPlayer, Laser, Movable,
-	Player, SpriteSize, Velocity,
+	Player, SpriteSize, Velocity, ScoreText, MaxScoreText, CodePilotActiveText, WeaponChargeBar, WeaponChargeBarOutline
 };
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
 use rustpython_vm as vm;
@@ -48,8 +48,8 @@ const BASE_ROT_SPEED: f32 = 10.;
 
 
 const PLAYER_RESPAWN_DELAY: f64 = 2.;
-const ENEMY_MAX: u32 = 2;
-const FORMATION_MEMBERS_MAX: u32 = 2;
+const ENEMY_MAX: u32 = 3;
+const FORMATION_MEMBERS_MAX: u32 = 3;
 
 // endregion: --- Game Constants
 
@@ -93,13 +93,19 @@ struct EnemyCount(u32);
 #[derive(Resource)]
 struct PlayerState {
 	on: bool,       // alive
+	weapon_cooldown: f32, // time until next shot
+	weapon_cooldown_max: f32, // time between shots
 	last_shot: f64, // -1 if not shot
+	score: u32,
 }
 impl Default for PlayerState {
 	fn default() -> Self {
 		Self {
 			on: false,
+			weapon_cooldown: 0.,
+			weapon_cooldown_max: 1.,
 			last_shot: -1.,
+			score: 0
 		}
 	}
 }
@@ -114,6 +120,9 @@ impl PlayerState {
 		self.last_shot = -1.;
 	}
 }
+
+// #[derive(Resource)]
+
 
 // endregion: --- Resources
 
@@ -134,16 +143,18 @@ fn main() {
 		.add_plugins(PlayerPlugin)
 		.add_plugins(EnemyPlugin)
 		.add_systems(Startup, setup_system)
-			.add_systems(Update, movable_system)
+		.add_systems(Update, ui_system)
+		.add_systems(Update, text_update_system)
+		.add_systems(Update, movable_system)
 		.add_systems(Update, player_laser_hit_enemy_system)
 		.add_systems(Update, enemy_laser_hit_player_system)
 		.add_systems(Update, explosion_to_spawn_system)
 		.add_systems(Update, explosion_animation_system)
-		.add_systems(Update, ui_example_system)
+		.add_systems(Update, weapon_cooldown_system)
 		.run();
 }
 
-fn ui_example_system(
+fn ui_system(
 	mut ui_state: ResMut<UiState>,
 	mut contexts: EguiContexts) {
 	let ctx = contexts.ctx_mut();
@@ -152,7 +163,7 @@ fn ui_example_system(
 	.min_width(300.0)
 	.show(ctx, |ui| {
         ui.vertical(|ui| {
-			ui.label("Write something: ");
+			ui.label("Add Codepilot Code: ");
 			ui.code_editor(&mut ui_state.player_code);
 		});
     });
@@ -202,6 +213,154 @@ fn setup_system(
 	};
 	commands.insert_resource(game_textures);
 	commands.insert_resource(EnemyCount(0));
+
+	//Setup the HUD
+	
+	//Text in the top left to show current score
+    commands.spawn((
+        // Create a TextBundle that has a Text with a list of sections.
+        TextBundle::from_sections([
+            TextSection::new(
+                "Score: ",
+                TextStyle {
+                    font: asset_server.load("fonts/ShareTechMono-Regular.ttf"),
+                    font_size: 30.0,
+                    ..default()
+                },
+            ),
+            TextSection::from_style(
+                TextStyle {
+                    font_size: 30.0,
+					font: asset_server.load("fonts/ShareTechMono-Regular.ttf"),
+                    color: Color::GOLD,
+                    ..default()
+			}),
+        ]).with_style(Style {
+            position_type: PositionType::Absolute,
+            top: Val::Px(5.0),
+            left: Val::Px(5.0),
+            ..default()
+        }),
+        ScoreText,
+    ));
+
+    commands.spawn((
+        // Create a TextBundle that has a Text with a list of sections.
+        TextBundle::from_sections([
+            TextSection::new(
+                "Weapon Charge:",
+                TextStyle {
+                    font: asset_server.load("fonts/ShareTechMono-Regular.ttf"),
+                    font_size: 20.0,
+                    ..default()
+                },
+            )
+        ]).with_style(Style {
+            position_type: PositionType::Absolute,
+            bottom: Val::Px(30.0),
+            left: Val::Px(35.0),
+            ..default()
+        }),
+    ));
+
+	//Text in the bottom right to show whether Codepilot is running
+	commands.spawn((
+		// Create a TextBundle that has a Text with a list of sections.
+		TextBundle::from_sections([
+			TextSection::new(
+				"Codepilot: ",
+				TextStyle {
+					font: asset_server.load("fonts/ShareTechMono-Regular.ttf"),
+					font_size: 20.0,
+					..default()
+				},
+			),
+			TextSection::from_style(
+				TextStyle {
+					font_size: 20.0,
+					font: asset_server.load("fonts/ShareTechMono-Regular.ttf"),
+					color: Color::RED,
+					..default()
+			}),
+		])
+		.with_text_alignment(TextAlignment::Left)
+		.with_style(Style {
+			position_type: PositionType::Absolute,
+			bottom: Val::Px(10.0),
+			right: Val::Px(350.0),
+			..default()
+		}),
+		CodePilotActiveText,
+	));
+
+	commands.spawn((SpriteBundle {
+        sprite: Sprite {
+            color: Color::rgb(0.3, 0.3, 0.3),
+            custom_size: Some(Vec2::new(100.0, 10.0)),
+            ..default()
+        },
+        transform: Transform::from_translation(Vec3::new(-win_w/2. + 100., -win_h/2.0 + 20., 0.)),
+        ..default()
+    }, WeaponChargeBar));
+
+	// commands.spawn((SpriteBundle {
+    //     sprite: Sprite {
+    //         color: Color::rgb(0.3, 0.3, 0.3),
+    //         custom_size: Some(Vec2::new(100.0, 10.0)),
+    //         ..default()
+    //     },
+    //     transform: Transform::from_translation(Vec3::new(-win_w/2. + 100., -win_h/2.0 + 20., 0.)),
+    //     ..default()
+    // }, WeaponChargeBarOutline));
+	
+}
+
+//system for weapon cooldown
+fn weapon_cooldown_system(
+	mut player_state: ResMut<PlayerState>,
+	time: Res<Time>,
+	win_size: Res<WinSize>,
+	mut chargebarquery: Query<(&mut Sprite, &mut Transform), With<WeaponChargeBar>>,
+) {
+	if player_state.weapon_cooldown > 0. {
+		player_state.weapon_cooldown -= time.delta_seconds();
+
+		if player_state.weapon_cooldown <= 0. {
+			info!("Ready to fire!");
+		} 
+	}
+
+	for (mut sprite, mut transform) in chargebarquery.iter_mut() {
+		sprite.color = Color::rgb(1.0 * (player_state.weapon_cooldown / player_state.weapon_cooldown_max), 1.0 * (1. - player_state.weapon_cooldown / player_state.weapon_cooldown_max), 0.2);
+		
+		sprite.custom_size = Some(Vec2::new(100.0 * (1.0 - player_state.weapon_cooldown / player_state.weapon_cooldown_max), 10.0));
+		transform.translation = Vec3::new(-win_size.w/2. + 100., -win_size.h/2.0 + 20., 0.);
+
+	}
+}
+
+fn text_update_system(
+    player_state: Res<PlayerState>,
+	copilotcode: Res<CodePilotCode>,
+    mut scorequery: Query<&mut Text, (Without<CodePilotActiveText>, With<ScoreText>)>,
+	mut codepilotquery: Query<&mut Text,  (With<CodePilotActiveText>, Without<ScoreText>)>,
+) {
+	//Update the Score
+    for mut text in &mut scorequery {
+        // Update the value of the second section
+		text.sections[1].value = format!("{0}", player_state.score);
+    }
+
+	//Display whether Codepilot is running
+	for mut text in codepilotquery.iter_mut() {
+		if copilotcode.compiled.is_some() {
+			text.sections[1].value = format!("Active");
+			text.sections[1].style.color = Color::GREEN;
+		} else {
+			text.sections[1].value = format!("Disabled");
+			text.sections[1].style.color = Color::RED;
+		}
+	}
 }
 
 fn movable_system(
@@ -239,10 +398,10 @@ fn movable_system(
 				transform.translation.y = win_size.h / 2.;
 			}
 
-			if transform.translation.x > win_size.w / 2. {
+			if transform.translation.x > win_size.w / 2. - 300. {
 				transform.translation.x = -win_size.w / 2.;
 			} else if transform.translation.x < -win_size.w / 2. {
-				transform.translation.x = win_size.w / 2.;
+				transform.translation.x = win_size.w / 2. - 300.;
 			}
 		}
 	}
@@ -252,6 +411,7 @@ fn movable_system(
 fn player_laser_hit_enemy_system(
 	mut commands: Commands,
 	mut enemy_count: ResMut<EnemyCount>,
+	mut player_state: ResMut<PlayerState>,
 	laser_query: Query<(Entity, &Transform, &SpriteSize), (With<Laser>, With<FromPlayer>)>,
 	enemy_query: Query<(Entity, &Transform, &SpriteSize), With<Enemy>>,
 ) {
@@ -289,6 +449,7 @@ fn player_laser_hit_enemy_system(
 				commands.entity(enemy_entity).despawn();
 				despawned_entities.insert(enemy_entity);
 				enemy_count.0 -= 1;
+				player_state.score += 1;
 
 				commands.spawn((ExplosionToSpawn {
 					transform: Transform {
@@ -302,6 +463,8 @@ fn player_laser_hit_enemy_system(
 		}
 	}
 }
+
+
 
 #[allow(clippy::type_complexity)] // for the Query types.
 fn enemy_laser_hit_player_system(
@@ -330,6 +493,7 @@ fn enemy_laser_hit_player_system(
 				// remove the player
 				commands.entity(player_entity).despawn();
 				player_state.shot(time.elapsed_seconds_f64());
+				player_state.score = 0;
 
 				// remove the laser
 				commands.entity(laser_entity).despawn();

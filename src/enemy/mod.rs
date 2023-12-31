@@ -56,7 +56,7 @@ fn enemy_spawn_system(
 }
 
 fn enemy_fire_criteria() -> bool {
-	thread_rng().gen_bool(1. / 30000.)
+	thread_rng().gen_bool(1. / 300.)
 }
 
 fn enemy_fire_system(

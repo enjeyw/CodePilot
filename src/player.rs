@@ -13,6 +13,7 @@ use rustpython::vm::{
 };
 use vm::convert::ToPyObject;
 use std::f32::consts::PI;
+use std::fmt::Result;
 use std::time::Duration;
 
 pub struct PlayerPlugin;
@@ -67,47 +68,204 @@ fn player_spawn_system(
 	}
 }
 
+fn try_fire_weapon(
+	commands: &mut Commands,
+	game_textures: &Res<GameTextures>,
+	player_state: &mut ResMut<PlayerState>,
+	player_tf: &Transform,
+
+) -> bool {
+
+	if player_state.weapon_cooldown > 0. {
+		return false;
+	}
+
+	let (x, y) = (player_tf.translation.x, player_tf.translation.y);
+	let x_offset = PLAYER_SIZE.0 / 2. * SPRITE_SCALE - 5.;
+
+	let mut spawn_laser = |x_offset: f32| {
+		let velocity = player_tf.rotation * Vec3::X * 10.0;
+
+		commands
+			.spawn(SpriteBundle {
+				texture: game_textures.player_laser.clone(),
+				transform: Transform {
+					translation: Vec3::new(x + x_offset, y, 0.),
+					scale: Vec3::new(SPRITE_SCALE, SPRITE_SCALE, 1.),
+					rotation: player_tf.rotation
+				},
+				..Default::default()
+			})
+			.insert(Laser)
+			.insert(FromPlayer)
+			.insert(SpriteSize::from(PLAYER_LASER_SIZE))
+			.insert(Movable { auto_despawn: true })
+			.insert(Velocity { x: velocity.x, y: velocity.y, omega: 0.});
+	};
+
+	spawn_laser(0.);
+
+	player_state.weapon_cooldown = player_state.weapon_cooldown_max;
+
+	return true;
+}
+
+fn accelerate_forward(
+	velocity: &mut Velocity,
+	transform: &Transform,
+	acceleration: f32,
+	max_speed: f32,
+	heading: Vec3,
+	heading_perp: Vec3,
+	commands: &mut Commands,
+) {
+	velocity.x += heading.x * acceleration;
+	velocity.y += heading.y * acceleration;
+
+	commands.spawn((ExplosionToSpawn {
+		transform: Transform {
+			translation: transform.translation - Vec3::Z - heading * 25.,
+			scale: Vec3{x: 0.6, y: 0.2, z: 1.},
+			rotation: transform.rotation,
+			..Default::default()
+		},
+		duration: 0.001,
+		is_engine: true
+	},));
+
+
+	commands.spawn((ExplosionToSpawn {
+		transform: Transform {
+			translation: transform.translation - Vec3::Z - heading * 15. + heading_perp * 20.,
+			scale: Vec3{x: 0.3, y: 0.15, z: 1.},
+			rotation: transform.rotation,
+			..Default::default()
+		},
+		duration: 0.001,
+		is_engine: true
+	},));
+
+	commands.spawn((ExplosionToSpawn {
+		transform: Transform {
+			translation: transform.translation - Vec3::Z - heading * 15. - heading_perp * 20.,
+			scale: Vec3{x: 0.3, y: 0.15, z: 1.},
+			rotation: transform.rotation,
+			..Default::default()
+		},
+		duration: 0.001,
+		is_engine: true
+	},));
+}
+
+fn accelerate_backward(
+	velocity: &mut Velocity,
+	transform: &Transform,
+	acceleration: f32,
+	max_speed: f32,
+	heading: Vec3,
+	heading_perp: Vec3,
+	commands: &mut Commands,
+) {
+	velocity.x -= heading.x * acceleration;
+	velocity.y -= heading.y * acceleration;
+
+
+	commands.spawn((ExplosionToSpawn {
+		transform: Transform {
+			translation: transform.translation - Vec3::Z + heading * 15. + heading_perp * 20.,
+			scale: Vec3{x: 0.3, y: 0.15, z: 1.},
+			rotation: transform.rotation,
+			..Default::default()
+		},
+		duration: 0.001,
+		is_engine: true
+	},));
+
+	commands.spawn((ExplosionToSpawn {
+		transform: Transform {
+			translation: transform.translation - Vec3::Z + heading * 15. - heading_perp * 20.,
+			scale: Vec3{x: 0.3, y: 0.15, z: 1.},
+			rotation: transform.rotation,
+			..Default::default()
+		},
+		duration: 0.001,
+		is_engine: true
+	},));
+}
+
+fn accelerate_counterclockwise(
+	velocity: &mut Velocity,
+	transform: &Transform,
+	ang_acceleration: f32,
+	max_ang_velocity: f32,
+	heading: Vec3,
+	heading_perp: Vec3,
+	commands: &mut Commands,
+) {
+	velocity.omega += ang_acceleration;
+
+	if velocity.omega > max_ang_velocity {
+		velocity.omega = max_ang_velocity;
+	}
+
+	commands.spawn((ExplosionToSpawn {
+		transform: Transform {
+			translation: transform.translation - Vec3::Z + heading * 10. - heading_perp * 30.,
+			scale: Vec3{x: 0.3, y: 0.1, z: 1.},
+			rotation: transform.rotation.mul_quat(Quat::from_rotation_z(PI / 2.)),
+			..Default::default()
+		},
+		duration: 0.001,
+		is_engine: true
+	},));
+}
+
+fn accelerate_clockwise (
+	velocity: &mut Velocity,
+	transform: &Transform,
+	ang_acceleration: f32,
+	max_ang_velocity: f32,
+	heading: Vec3,
+	heading_perp: Vec3,
+	commands: &mut Commands,
+) {
+	velocity.omega -= ang_acceleration;
+
+	if velocity.omega < -max_ang_velocity {
+		velocity.omega = -max_ang_velocity;
+	}
+
+	commands.spawn((ExplosionToSpawn {
+		transform: Transform {
+			translation: transform.translation - Vec3::Z + heading * 10. + heading_perp * 30.,
+			scale: Vec3{x: 0.3, y: 0.1, z: 1.},
+			rotation: transform.rotation.mul_quat(Quat::from_rotation_z(PI / 2.)),
+			..Default::default()
+		},
+		duration: 0.001,
+		is_engine: true
+	},));
+}
+
 fn player_fire_system(
 	mut commands: Commands,
 	kb: Res<Input<KeyCode>>,
 	game_textures: Res<GameTextures>,
+	mut player_state: ResMut<PlayerState>,
 	query: Query<&Transform, With<Player>>,
 ) {
 	if let Ok(player_tf) = query.get_single() {
 		if kb.just_pressed(KeyCode::Space) {
-			let (x, y) = (player_tf.translation.x, player_tf.translation.y);
-			let x_offset = PLAYER_SIZE.0 / 2. * SPRITE_SCALE - 5.;
-
-			let mut spawn_laser = |x_offset: f32| {
-				let velocity = player_tf.rotation * Vec3::X * 10.0;
-
-				commands
-					.spawn(SpriteBundle {
-						texture: game_textures.player_laser.clone(),
-						transform: Transform {
-							translation: Vec3::new(x + x_offset, y, 0.),
-							scale: Vec3::new(SPRITE_SCALE, SPRITE_SCALE, 1.),
-							rotation: player_tf.rotation
-						},
-						..Default::default()
-					})
-					.insert(Laser)
-					.insert(FromPlayer)
-					.insert(SpriteSize::from(PLAYER_LASER_SIZE))
-					.insert(Movable { auto_despawn: true })
-					.insert(Velocity { x: velocity.x, y: velocity.y, omega: 0.});
-			};
-
-			spawn_laser(0.);
+			try_fire_weapon(&mut commands, &game_textures, &mut player_state, player_tf);
 		}
 	}
 }
 
 fn player_codepilot_system(
+	mut commands: Commands,
 	kb: Res<Input<KeyCode>>,
 	ui_state: Res<UiState>,	
 	mut codepilot_code: ResMut<CodePilotCode>,
-	mut commands: Commands,
 ) {
 
 	if kb.just_pressed(KeyCode::Return) {
@@ -119,7 +277,7 @@ fn player_codepilot_system(
 		});
 
 		let code_obj = interp.enter(|vm| {
-			let scope = vm.new_scope_with_builtins();
+			let scope: vm::scope::Scope = vm.new_scope_with_builtins();
 			let source = ui_state.player_code.as_str();
 			
 			let code_obj_res = vm
@@ -134,8 +292,6 @@ fn player_codepilot_system(
 	}
 }
 
-
-
 #[derive(Debug, Clone)]
 struct PyAccessibleV3Vec(Vec<Vec3>);
 impl ToPyObject for PyAccessibleV3Vec {
@@ -149,12 +305,30 @@ impl ToPyObject for PyAccessibleV3Vec {
 	}
 }
 
+fn try_boolean_python_action (key: &str, scope: &vm::scope::Scope, vm: &VirtualMachine) -> bool {
+	let fire = scope.globals.get_item(key, vm);
+				
+	if let Ok(fire_ref) = fire {
+		let fire_bool_res = fire_ref.is_true(vm);
+		if let Ok(fire_bool) = fire_bool_res {
+			info!("fire: {}", fire_bool);
+
+			if fire_bool {
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
 fn player_keyboard_event_system(
+	mut commands: Commands,
 	kb: Res<Input<KeyCode>>,
 	ui_state: Res<UiState>,
 	codepilot_code: Res<CodePilotCode>,
 	game_textures: Res<GameTextures>,
-	mut commands: Commands,
+	mut player_state: ResMut<PlayerState>,
 	mut query: Query<(&mut Velocity, &Transform), With<Player>>,
 	enemy_query: Query<(&Velocity, &Transform), (Without<Player>, With<Enemy>)>,
 ) {
@@ -163,8 +337,20 @@ fn player_keyboard_event_system(
 
 	let max_speed = 2.0;
 	let max_ang_velocity = 0.5;
+	
 
 	if let Ok((mut velocity, transform)) = query.get_single_mut() {
+
+		let heading = transform.rotation * Vec3::X;
+		let heading_perp = transform.rotation * Vec3::Y;
+		let speed = velocity.y.hypot(velocity.x);
+		let course = (velocity.y).atan2(velocity.x);
+
+		// ensure speed is not greater than max speed
+		if speed > max_speed {
+			velocity.x = course.cos() * max_speed;
+			velocity.y = course.sin() * max_speed;
+		}
 
 		// Convert all enemy velocity and positions to lists
 		let enemy_velocities: PyAccessibleV3Vec = PyAccessibleV3Vec(
@@ -180,6 +366,7 @@ fn player_keyboard_event_system(
 			}).collect()
 		);
 
+		// Codepilot player control section
 		if let Some(cpc) = codepilot_code.compiled.clone() {
 			
 			vm::Interpreter::without_stdlib(Default::default()).enter(|vm | {
@@ -214,162 +401,57 @@ fn player_keyboard_event_system(
 				vm.run_code_obj(cpc, scope.clone());
 
 				let fire = scope.globals.get_item("fire", vm);
-				
-				if let Ok(fire_ref) = fire.clone() {
-					let fire_bool_res = fire_ref.is_true(vm);
-					if let Ok(fire_bool) = fire_bool_res {
-						info!("fire: {}", fire_bool);
 
-						if fire_bool {
-							let (x, y) = (transform.translation.x, transform.translation.y);
-							let x_offset = PLAYER_SIZE.0 / 2. * SPRITE_SCALE - 5.;
+				if try_boolean_python_action("fire", &scope, vm) {
+					try_fire_weapon(&mut commands, &game_textures, &mut player_state, transform);
+				}
 
-							let mut spawn_laser = |x_offset: f32| {
-								let velocity = transform.rotation * Vec3::X * 10.0;
+				if try_boolean_python_action("counterclockwise", &scope, vm) {
+					accelerate_counterclockwise(
+						&mut velocity, transform, ang_acceleration, max_ang_velocity, heading, heading_perp, &mut commands)
+				}
 
-								commands
-									.spawn(SpriteBundle {
-										texture: game_textures.player_laser.clone(),
-										transform: Transform {
-											translation: Vec3::new(x + x_offset, y, 0.),
-											scale: Vec3::new(SPRITE_SCALE, SPRITE_SCALE, 1.),
-											rotation: transform.rotation
-										},
-										..Default::default()
-									})
-									.insert(Laser)
-									.insert(FromPlayer)
-									.insert(SpriteSize::from(PLAYER_LASER_SIZE))
-									.insert(Movable { auto_despawn: true })
-									.insert(Velocity { x: velocity.x, y: velocity.y, omega: 0.});
-							};
+				if try_boolean_python_action("clockwise", &scope, vm) {
+					accelerate_clockwise(
+						&mut velocity, transform, ang_acceleration, max_ang_velocity, heading, heading_perp, &mut commands)
+				}
 
-							spawn_laser(0.);
-						}
-					}
+				if try_boolean_python_action("forward", &scope, vm) {
+					accelerate_forward(
+						&mut velocity, transform, acceleration, max_speed, heading, heading_perp, &mut commands
+					)
+				}
+
+				if try_boolean_python_action("backward", &scope, vm) {
+					accelerate_backward(
+						&mut velocity, transform, acceleration, max_speed, heading, heading_perp, &mut commands
+					)
 				}
 
 			});
 		}
 
-		let heading = transform.rotation * Vec3::X;
-		let heading_perp = transform.rotation * Vec3::Y;
-		let speed = velocity.y.hypot(velocity.x);
-		let course = (velocity.y).atan2(velocity.x);
-
-		// ensure speed is not greater than max speed
-
-		if speed > max_speed {
-			velocity.x = course.cos() * max_speed;
-			velocity.y = course.sin() * max_speed;
-		}
-
+		// Player keyboard control section
 		if kb.pressed(KeyCode::W) {
-			velocity.x += heading.x * acceleration;
-			velocity.y += heading.y * acceleration;
-
-			commands.spawn((ExplosionToSpawn {
-				transform: Transform {
-					translation: transform.translation - Vec3::Z - heading * 25.,
-					scale: Vec3{x: 0.6, y: 0.2, z: 1.},
-					rotation: transform.rotation,
-					..Default::default()
-				},
-				duration: 0.001,
-				is_engine: true
-			},));
-
-
-			commands.spawn((ExplosionToSpawn {
-				transform: Transform {
-					translation: transform.translation - Vec3::Z - heading * 15. + heading_perp * 20.,
-					scale: Vec3{x: 0.3, y: 0.15, z: 1.},
-					rotation: transform.rotation,
-					..Default::default()
-				},
-				duration: 0.001,
-				is_engine: true
-			},));
-
-			commands.spawn((ExplosionToSpawn {
-				transform: Transform {
-					translation: transform.translation - Vec3::Z - heading * 15. - heading_perp * 20.,
-					scale: Vec3{x: 0.3, y: 0.15, z: 1.},
-					rotation: transform.rotation,
-					..Default::default()
-				},
-				duration: 0.001,
-				is_engine: true
-			},));
-
+			accelerate_forward(
+				&mut velocity, transform, acceleration, max_speed, heading, heading_perp, &mut commands
+			)
 		}
 
 		if kb.pressed(KeyCode::S) {
-			velocity.x -= heading.x * acceleration;
-			velocity.y -= heading.y * acceleration;
-
-
-			commands.spawn((ExplosionToSpawn {
-				transform: Transform {
-					translation: transform.translation - Vec3::Z + heading * 15. + heading_perp * 20.,
-					scale: Vec3{x: 0.3, y: 0.15, z: 1.},
-					rotation: transform.rotation,
-					..Default::default()
-				},
-				duration: 0.001,
-				is_engine: true
-			},));
-
-			commands.spawn((ExplosionToSpawn {
-				transform: Transform {
-					translation: transform.translation - Vec3::Z + heading * 15. - heading_perp * 20.,
-					scale: Vec3{x: 0.3, y: 0.15, z: 1.},
-					rotation: transform.rotation,
-					..Default::default()
-				},
-				duration: 0.001,
-				is_engine: true
-			},));
+			accelerate_backward(
+				&mut velocity, transform, acceleration, max_speed, heading, heading_perp, &mut commands
+			)
 		}
 
 		if kb.pressed(KeyCode::A) {
-			// increase angular velocity
-			velocity.omega += ang_acceleration;
-
-			if velocity.omega > max_ang_velocity {
-				velocity.omega = max_ang_velocity;
-			}
-
-			commands.spawn((ExplosionToSpawn {
-				transform: Transform {
-					translation: transform.translation - Vec3::Z + heading * 10. - heading_perp * 30.,
-					scale: Vec3{x: 0.3, y: 0.1, z: 1.},
-					rotation: transform.rotation.mul_quat(Quat::from_rotation_z(PI / 2.)),
-					..Default::default()
-				},
-				duration: 0.001,
-				is_engine: true
-			},));
+			accelerate_counterclockwise(
+				&mut velocity, transform, ang_acceleration, max_ang_velocity, heading, heading_perp, &mut commands)
 		}
 
 		if kb.pressed(KeyCode::D) {
-			// increase angular velocity
-			velocity.omega -= ang_acceleration;
-
-			if velocity.omega < -max_ang_velocity {
-				velocity.omega = -max_ang_velocity;
-			}
-
-			commands.spawn((ExplosionToSpawn {
-				transform: Transform {
-					translation: transform.translation - Vec3::Z + heading * 10. + heading_perp * 30.,
-					scale: Vec3{x: 0.3, y: 0.1, z: 1.},
-					rotation: transform.rotation.mul_quat(Quat::from_rotation_z(PI / 2.)),
-					..Default::default()
-				},
-				duration: 0.001,
-				is_engine: true
-			},));
+			accelerate_clockwise(
+				&mut velocity, transform, ang_acceleration, max_ang_velocity, heading, heading_perp, &mut commands)
 	
 		}
 		

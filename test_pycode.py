@@ -17,3 +17,5 @@ for position in enemy_positions:
 
     if dot_product > 0.9:
         fire = True
+
+

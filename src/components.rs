@@ -73,3 +73,20 @@ impl Default for ExplosionTimer {
 	}
 }
 // endregion: --- Explosion Components
+
+//region: HUD Components
+#[derive(Component)]
+pub struct WeaponChargeBar;
+
+#[derive(Component)]
+pub struct WeaponChargeBarOutline;
+
+#[derive(Component)]
+pub struct ScoreText;
+
+#[derive(Component)]
+pub struct CodePilotActiveText;
+
+#[derive(Component)]
+pub struct MaxScoreText;
+

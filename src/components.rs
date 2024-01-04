@@ -6,6 +6,9 @@ use bevy::transform::components::Transform;
 
 // region:    --- Common Components
 #[derive(Component)]
+pub struct CameraMarker;
+
+#[derive(Component)]
 pub struct Velocity {
 	pub x: f32,
 	pub y: f32,

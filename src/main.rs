@@ -5,7 +5,7 @@ use bevy::prelude::*;
 use bevy::sprite::collide_aabb::collide;
 use bevy::window::PrimaryWindow;
 use components::{
-	Enemy, Explosion, ExplosionTimer, ExplosionToSpawn, FromEnemy, FromPlayer, Laser, Movable,
+	CameraMarker, Enemy, Explosion, ExplosionTimer, ExplosionToSpawn, FromEnemy, FromPlayer, Laser, Movable,
 	Player, SpriteSize, Velocity, ScoreText, MaxScoreText, CodePilotActiveText, WeaponChargeBar, WeaponChargeBarOutline
 };
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
@@ -176,10 +176,11 @@ fn setup_system(
 	query: Query<&Window, With<PrimaryWindow>>,
 ) {
 	// camera
-	commands.spawn(Camera2dBundle::default());
+	commands.spawn(
+		(Camera2dBundle::default(), CameraMarker));
 
 	// capture window size
-	let Ok(primary) = query.get_single() else {
+		let Ok(primary) = query.get_single() else {
 		return;
 	};
 	let (win_w, win_h) = (primary.width(), primary.height());
@@ -363,16 +364,34 @@ fn text_update_system(
 	}
 }
 
+
+
 fn movable_system(
 	mut commands: Commands,
 	time: Res<Time>,
 	win_size: Res<WinSize>,
 	ui_state: Res<UiState>,
-	mut query: Query<(Entity, &Velocity, &mut Transform, &Movable)>,
+	mut player_query: Query<(&mut Transform, &mut Velocity, &mut Movable), (With<Player>, Without<CameraMarker>)>,
+	mut camera_query: Query<&mut Transform, (With<CameraMarker>, Without<Player>)>,
+	mut other_movable_query: Query<(Entity, &Velocity, &mut Transform, &Movable), (Without<Player>, Without<CameraMarker>)>
 ) {
 	let delta = time.delta_seconds();
 
-	for (entity, velocity, mut transform, movable) in &mut query {
+	if let Ok((mut player_tf, player_velocity, _)) = player_query.get_single_mut() {
+
+		player_tf.translation.x += player_velocity.x * delta * BASE_SPEED;
+		player_tf.translation.y += player_velocity.y * delta * BASE_SPEED;
+
+		player_tf.rotate_z(
+			player_velocity.omega * delta * BASE_ROT_SPEED
+		);
+
+		if let Ok(mut camera_tf) = camera_query.get_single_mut() {
+			camera_tf.translation = player_tf.translation;
+		}
+	}
+	
+	for (entity, velocity, mut transform, movable) in &mut other_movable_query {
 		transform.translation.x += velocity.x * delta * BASE_SPEED;
 		transform.translation.y += velocity.y * delta * BASE_SPEED;
 
@@ -380,30 +399,30 @@ fn movable_system(
 			velocity.omega * delta * BASE_ROT_SPEED
 		);
 
-		if movable.auto_despawn {
-			// despawn when out of screen
-			const MARGIN: f32 = 200.;
-			if transform.translation.y > win_size.h / 2. + MARGIN
-				|| transform.translation.y < -win_size.h / 2. - MARGIN
-				|| transform.translation.x > win_size.w / 2. + MARGIN
-				|| transform.translation.x < -win_size.w / 2. - MARGIN
-			{
-				commands.entity(entity).despawn();
-			}
-		} else {
-			// wrap on other side of screen
-			if transform.translation.y > win_size.h / 2. {
-				transform.translation.y = -win_size.h / 2.;
-			} else if transform.translation.y < -win_size.h / 2. {
-				transform.translation.y = win_size.h / 2.;
-			}
+		// if movable.auto_despawn {
+		// 	// despawn when out of screen
+		// 	const MARGIN: f32 = 200.;
+		// 	if transform.translation.y > win_size.h / 2. + MARGIN
+		// 		|| transform.translation.y < -win_size.h / 2. - MARGIN
+		// 		|| transform.translation.x > win_size.w / 2. + MARGIN
+		// 		|| transform.translation.x < -win_size.w / 2. - MARGIN
+		// 	{
+		// 		commands.entity(entity).despawn();
+		// 	}
+		// } else {
+		// 	// wrap on other side of screen
+		// 	if transform.translation.y > win_size.h / 2. {
+		// 		transform.translation.y = -win_size.h / 2.;
+		// 	} else if transform.translation.y < -win_size.h / 2. {
+		// 		transform.translation.y = win_size.h / 2.;
+		// 	}
 
-			if transform.translation.x > win_size.w / 2. - 300. {
-				transform.translation.x = -win_size.w / 2.;
-			} else if transform.translation.x < -win_size.w / 2. {
-				transform.translation.x = win_size.w / 2. - 300.;
-			}
-		}
+		// 	if transform.translation.x > win_size.w / 2. - 300. {
+		// 		transform.translation.x = -win_size.w / 2.;
+		// 	} else if transform.translation.x < -win_size.w / 2. {
+		// 		transform.translation.x = win_size.w / 2. - 300.;
+		// 	}
+		// }
 	}
 }
 

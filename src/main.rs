@@ -6,7 +6,7 @@ use bevy::sprite::collide_aabb::collide;
 use bevy::window::PrimaryWindow;
 use components::{
 	CameraMarker, Enemy, Explosion, ExplosionTimer, ExplosionToSpawn, FromEnemy, FromPlayer, Laser, Movable,
-	Player, SpriteSize, Velocity, ScoreText, MaxScoreText, CodePilotActiveText, WeaponChargeBar, WeaponChargeBarOutline
+	Player, SpriteSize, Velocity, ScoreText, MaxScoreText, CodePilotActiveText, WeaponChargeBar
 };
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
 use rustpython_vm as vm;
@@ -245,24 +245,24 @@ fn setup_system(
         ScoreText,
     ));
 
-    commands.spawn((
-        // Create a TextBundle that has a Text with a list of sections.
-        TextBundle::from_sections([
-            TextSection::new(
-                "Weapon Charge:",
-                TextStyle {
-                    font: asset_server.load("fonts/ShareTechMono-Regular.ttf"),
-                    font_size: 20.0,
-                    ..default()
-                },
-            )
-        ]).with_style(Style {
-            position_type: PositionType::Absolute,
-            bottom: Val::Px(30.0),
-            left: Val::Px(35.0),
-            ..default()
-        }),
-    ));
+    // commands.spawn((
+    //     // Create a TextBundle that has a Text with a list of sections.
+    //     TextBundle::from_sections([
+    //         TextSection::new(
+    //             "Weapon Charge:",
+    //             TextStyle {
+    //                 font: asset_server.load("fonts/ShareTechMono-Regular.ttf"),
+    //                 font_size: 20.0,
+    //                 ..default()
+    //             },
+    //         )
+    //     ]).with_style(Style {
+    //         position_type: PositionType::Absolute,
+    //         bottom: Val::Px(30.0),
+    //         left: Val::Px(35.0),
+    //         ..default()
+    //     }),
+    // ));
 
 	//Text in the bottom right to show whether Codepilot is running
 	commands.spawn((
@@ -294,26 +294,75 @@ fn setup_system(
 		CodePilotActiveText,
 	));
 
-	commands.spawn((SpriteBundle {
-        sprite: Sprite {
-            color: Color::rgb(0.3, 0.3, 0.3),
-            custom_size: Some(Vec2::new(100.0, 10.0)),
+	commands
+    .spawn(NodeBundle {
+        style: Style {
+            width: Val::Percent(100.0),
+			position_type: PositionType::Absolute,
+            justify_content: JustifyContent::FlexStart,
+            bottom: Val::Px(0.0),
+            left: Val::Px(0.0),
             ..default()
         },
-        transform: Transform::from_translation(Vec3::new(-win_w/2. + 100., -win_h/2.0 + 20., 0.)),
         ..default()
-    }, WeaponChargeBar));
-
-	// commands.spawn((SpriteBundle {
-    //     sprite: Sprite {
-    //         color: Color::rgb(0.3, 0.3, 0.3),
-    //         custom_size: Some(Vec2::new(100.0, 10.0)),
-    //         ..default()
-    //     },
-    //     transform: Transform::from_translation(Vec3::new(-win_w/2. + 100., -win_h/2.0 + 20., 0.)),
-    //     ..default()
-    // }, WeaponChargeBarOutline));
+	}).with_children(|parent| {
+		spawn_bar(parent, asset_server);
+	});
 	
+}
+
+fn spawn_bar(parent: &mut ChildBuilder, asset_server: Res<AssetServer>) {
+    parent
+        .spawn(NodeBundle {
+            style: Style {
+				padding: UiRect::all(Val::Px(20.)),
+                height: Val::Px(30.0),
+                width: Val::Px(400.0),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::FlexStart,
+                flex_direction: FlexDirection::Row,
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .with_children(|parent| {
+
+            parent.spawn(TextBundle::from_section(
+				"Weapon Charge:",
+				TextStyle {
+					font: asset_server.load("fonts/ShareTechMono-Regular.ttf"),
+					font_size: 20.0,
+					..default()
+				}));
+
+            parent
+                .spawn(NodeBundle {
+                    style: Style {
+                        width: Val::Px(100.),
+                        height: Val::Px(10.),
+                        padding: UiRect::all(Val::Px(1.)),
+                        align_items: AlignItems::Stretch,
+                        top: Val::Px(2.0),
+                        left: Val::Px(6.0),
+                        ..Default::default()
+                    },
+                    background_color: Color::BLACK.into(),
+                    ..Default::default()
+                })
+                .with_children(|parent| {
+                    parent.spawn((
+                        NodeBundle {
+                            style: Style {
+                                width : Val::Percent(50.0),
+                                ..Default::default()
+                            },
+                            background_color: Color::GREEN.into(),
+                            ..Default::default()
+                        },
+                        WeaponChargeBar,
+                    ));
+                });
+        });
 }
 
 //system for weapon cooldown
@@ -321,7 +370,7 @@ fn weapon_cooldown_system(
 	mut player_state: ResMut<PlayerState>,
 	time: Res<Time>,
 	win_size: Res<WinSize>,
-	mut chargebarquery: Query<(&mut Sprite, &mut Transform), With<WeaponChargeBar>>,
+	mut chargebarquery: Query<(&mut Style, &mut BackgroundColor), With<WeaponChargeBar>>,
 ) {
 	if player_state.weapon_cooldown > 0. {
 		player_state.weapon_cooldown -= time.delta_seconds();
@@ -331,12 +380,10 @@ fn weapon_cooldown_system(
 		} 
 	}
 
-	for (mut sprite, mut transform) in chargebarquery.iter_mut() {
-		sprite.color = Color::rgb(1.0 * (player_state.weapon_cooldown / player_state.weapon_cooldown_max), 1.0 * (1. - player_state.weapon_cooldown / player_state.weapon_cooldown_max), 0.2);
+	for (mut style, mut color) in chargebarquery.iter_mut() {
+		color.0 = Color::rgb(1.0 * (player_state.weapon_cooldown / player_state.weapon_cooldown_max), 1.0 * (1. - player_state.weapon_cooldown / player_state.weapon_cooldown_max), 0.2);
 		
-		sprite.custom_size = Some(Vec2::new(100.0 * (1.0 - player_state.weapon_cooldown / player_state.weapon_cooldown_max), 10.0));
-		transform.translation = Vec3::new(-win_size.w/2. + 100., -win_size.h/2.0 + 20., 0.);
-
+		style.width = Val::Percent(100.0 * (1.0 - player_state.weapon_cooldown / player_state.weapon_cooldown_max));
 	}
 }
 

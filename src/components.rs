@@ -82,9 +82,6 @@ impl Default for ExplosionTimer {
 pub struct WeaponChargeBar;
 
 #[derive(Component)]
-pub struct WeaponChargeBarOutline;
-
-#[derive(Component)]
 pub struct ScoreText;
 
 #[derive(Component)]

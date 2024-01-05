@@ -1,6 +1,6 @@
 #![allow(unused)] // silence unused warnings while exploring (to comment out)
 
-use bevy::math::Vec3Swizzles;
+use bevy::{math::Vec3Swizzles, diagnostic::LogDiagnosticsPlugin};
 use bevy::prelude::*;
 use bevy::sprite::collide_aabb::collide;
 use bevy::window::PrimaryWindow;
@@ -8,10 +8,13 @@ use components::{
 	CameraMarker, Enemy, Explosion, ExplosionTimer, ExplosionToSpawn, FromEnemy, FromPlayer, Laser, Movable,
 	Player, SpriteSize, Velocity, ScoreText, MaxScoreText, CodePilotActiveText, WeaponChargeBar
 };
+use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
 use rustpython_vm as vm;
 use vm::{builtins::PyCode, PyRef};
 use std::sync::atomic::{AtomicBool, Ordering};
+use rand::{Rng, rngs::StdRng, SeedableRng, thread_rng};
+
 
 use enemy::EnemyPlugin;
 use player::PlayerPlugin;
@@ -131,6 +134,8 @@ fn main() {
 		.insert_resource(ClearColor(Color::rgb(0.04, 0.04, 0.04)))
 		.init_resource::<UiState>()
 		.init_resource::<CodePilotCode>()
+		.add_plugins(FrameTimeDiagnosticsPlugin::default())
+		.add_plugins(LogDiagnosticsPlugin::default())
 		.add_plugins(DefaultPlugins.set(WindowPlugin {
 			primary_window: Some(Window {
 				title: "Codepilot".into(),
@@ -633,6 +638,9 @@ pub struct Tile {
 	pub y: i32
 }
 
+#[derive(Component)]
+pub struct Star;
+
 fn tile_background_system(
 	mut commands: Commands,
 	win_size: Res<WinSize>,
@@ -670,7 +678,31 @@ fn tile_background_system(
 							},
 							..Default::default()
 						})
-						.insert(Tile {x: tile_x, y: tile_y});
+						.insert(Tile {x: tile_x, y: tile_y})
+						.with_children(|parent| {
+							//Spawn Star Sprites for tile with deterministic random Transform
+							let mut rng = thread_rng();
+							// let mut rng = StdRng::seed_from_u64((tile_x.clone() as u64) * 10 + (tile_y.clone() as u64));
+
+							for i in 0..20 {
+								let x = rng.gen_range(-win_size.w / 2. .. win_size.w / 2.);
+								let y = rng.gen_range(-win_size.h / 2. .. win_size.h / 2.);
+								let scale = rng.gen_range(0.1.. 0.5);
+								let rotation = rng.gen_range(0. .. 2. * PI);
+								info!("Star: {} {} {} {}", x, y, scale, rotation);
+								parent.spawn(SpriteBundle {
+									texture: game_textures.player_laser.clone(),
+									transform: Transform {
+										translation: Vec3::new(x, y, 0.),
+										rotation: Quat::from_rotation_z(rotation),
+										scale: Vec3::new(scale, scale, 1.),
+										..Default::default()
+									},
+									..Default::default()
+								})
+								.insert(Star);
+							}
+						});
 
 					info!("Spawning")
 

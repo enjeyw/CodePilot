@@ -38,6 +38,8 @@ features = [
 [workspace]
 resolver = "2" # Important! wgpu/Bevy needs this!
 
-# Enable max optimizations for dependencies, excluding rust-invaders code:
+[profile.dev]
+opt-level = 1
+
 [profile.dev.package."*"]
 opt-level = 3

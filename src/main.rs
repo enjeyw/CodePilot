@@ -145,6 +145,7 @@ fn main() {
 		.add_systems(Startup, setup_system)
 		.add_systems(Update, ui_system)
 		.add_systems(Update, text_update_system)
+		.add_systems(Update, tile_background_system)
 		.add_systems(Update, movable_system)
 		.add_systems(Update, player_laser_hit_enemy_system)
 		.add_systems(Update, enemy_laser_hit_player_system)
@@ -623,5 +624,77 @@ fn explosion_animation_system(
 				commands.entity(entity).despawn();
 			}
 		}
+	}
+}
+
+#[derive(Component)]
+pub struct Tile {
+	pub x: i32,
+	pub y: i32
+}
+
+fn tile_background_system(
+	mut commands: Commands,
+	win_size: Res<WinSize>,
+	game_textures: Res<GameTextures>,
+	camera_query: Query<&Transform, (With<CameraMarker>, Without<Player>)>,
+	tile_query: Query<(Entity, &Tile)>
+	
+) {
+
+
+	if let Ok(camera_tf) = camera_query.get_single() {
+		let current_tile_x = (camera_tf.translation.x / win_size.w).floor() as i32;
+		let cureent_tile_y = (camera_tf.translation.y / win_size.h).floor() as i32;
+
+		tile_query.for_each(|(ent, tile)| {
+			if (tile.x - current_tile_x).abs() > 1 || (tile.y - cureent_tile_y).abs() > 1 {
+				commands.entity(ent).despawn();
+				info!("Despawning")
+			}
+		});
+
+		// spawn tiles around the camera
+		for x in -1..=1 {
+			for y in -1..=1 {
+				let tile_x = current_tile_x + x;
+				let tile_y = cureent_tile_y + y;
+
+				if tile_query.iter().find(|(_, tile)| tile.x == tile_x && tile.y == tile_y).is_none() {
+					commands
+						.spawn(SpriteBundle {
+							texture: game_textures.player_laser.clone(),
+							transform: Transform {
+								translation: Vec3::new((tile_x as f32) * win_size.w, (tile_y as f32)* win_size.h, 0.),
+								..Default::default()
+							},
+							..Default::default()
+						})
+						.insert(Tile {x: tile_x, y: tile_y});
+
+					info!("Spawning")
+
+				}
+			}
+		};
+		
+		// commands
+		// 	.spawn(SpriteBundle {
+		// 		// texture: game_textures.player_laser.clone(),
+		// 		transform: Transform {
+		// 			translation: Vec3::new(current_tile_x, cureent_tile_y, 0.),
+		// 			..Default::default()
+		// 		},
+		// 		..Default::default()
+		// 	})
+		// 	.insert(Tile(Vec2::new(current_tile_x, cureent_tile_y)));
+
+
+
+		// info!("Tile coor: {} {}", current_tile_x, cureent_tile_y)
+
+	
+
+
 	}
 }

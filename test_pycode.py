@@ -15,7 +15,5 @@ for position in enemy_positions:
 
     print(dot_product)
 
-    if dot_product > 0.9:
+    if dot_product > 0.99:
         fire = True
-
-

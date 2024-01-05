@@ -96,7 +96,7 @@ fn enemy_movement_system(
 	let acceleration = 0.5;
 	let ang_acceleration = 0.1;
 
-	let max_speed = 2.0;
+	let max_speed = 1.0;
 	let max_ang_velocity = 0.18;
 
 
@@ -146,77 +146,4 @@ fn enemy_movement_system(
 
 		}
 	}
-
-	// 	// ensure speed is not greater than max speed
-	// 	let speed = velocity.y.hypot(velocity.x);
-	// 	let course = (velocity.y).atan2(velocity.x);
-
-	// 	if speed > max_speed {
-	// 		velocity.x = course.cos() * max_speed;
-	// 		velocity.y = course.sin() * max_speed;
-	// 	}
-
-	// 	if do_turn {
-	// 		if thread_rng().gen_bool(0.5){
-	// 			info!("turning pos x: {} y: {} o: {}", velocity.x, velocity.y, velocity.omega);
-
-	// 			velocity.omega += ang_acceleration;
-
-	// 			if velocity.omega > max_ang_velocity {
-	// 				velocity.omega = max_ang_velocity;
-	// 			}
-
-	// 		} else {
-	// 			info!("turning neg x: {} y: {} o: {}", velocity.x, velocity.y, velocity.omega);
-
-	// 			velocity.omega -= ang_acceleration;
-
-	// 			if velocity.omega < -max_ang_velocity {
-	// 				velocity.omega = -max_ang_velocity;
-	// 			}
-	// 		}
-
-	// 	}
-		
-
-
-	// 	// // current position
-	// 	// let (x_org, y_org) = (transform.translation.x, transform.translation.y);
-
-	// 	// // max distance
-	// 	// let max_distance = delta * formation.speed;
-
-	// 	// // 1 for counter clockwise, -1 clockwise
-	// 	// let dir: f32 = if formation.start.0 < 0. { 1. } else { -1. };
-	// 	// let (x_pivot, y_pivot) = formation.pivot;
-	// 	// let (x_radius, y_radius) = formation.radius;
-
-	// 	// // compute next angle (based on time for now)
-	// 	// let angle = formation.angle
-	// 	// 	+ dir * formation.speed * delta / (x_radius.min(y_radius) * PI / 2.);
-
-	// 	// // compute target x/y
-	// 	// let x_dst = x_radius * angle.cos() + x_pivot;
-	// 	// let y_dst = y_radius * angle.sin() + y_pivot;
-
-	// 	// // compute distance
-	// 	// let dx = x_org - x_dst;
-	// 	// let dy = y_org - y_dst;
-	// 	// let distance = (dx * dx + dy * dy).sqrt();
-	// 	// let distance_ratio = if distance == 0. { 0. } else { max_distance / distance };
-
-	// 	// // compute final x/y
-	// 	// let x = x_org - dx * distance_ratio;
-	// 	// let x = if dx > 0. { x.max(x_dst) } else { x.min(x_dst) };
-	// 	// let y = y_org - dy * distance_ratio;
-	// 	// let y = if dy > 0. { y.max(y_dst) } else { y.min(y_dst) };
-
-	// 	// // start rotating the formation angle only when sprite is on or close to ellipse
-	// 	// if distance < max_distance * formation.speed / 20. {
-	// 	// 	formation.angle = angle;
-	// 	// }
-
-	// 	// let translation = &mut transform.translation;
-	// 	// (translation.x, translation.y) = (x, y);
-	// }
 }

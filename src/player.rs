@@ -456,6 +456,5 @@ fn player_keyboard_event_system(
 		}
 		
 		// info!("speed: {} x: {} y: {} o: {}", speed, velocity.x, velocity.y, velocity.omega);
-
 	}
 }

@@ -5,8 +5,8 @@ use bevy::prelude::*;
 use bevy::sprite::collide_aabb::collide;
 use bevy::window::PrimaryWindow;
 use components::{
-	Enemy, Explosion, ExplosionTimer, ExplosionToSpawn, FromEnemy, FromPlayer, Laser, Movable,
-	Player, SpriteSize, Velocity, ScoreText, MaxScoreText, CodePilotActiveText, WeaponChargeBar, WeaponChargeBarOutline
+	CameraMarker, Enemy, Explosion, ExplosionTimer, ExplosionToSpawn, FromEnemy, FromPlayer, Laser, Movable,
+	Player, SpriteSize, Velocity, ScoreText, MaxScoreText, CodePilotActiveText, WeaponChargeBar
 };
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
 use rustpython_vm as vm;
@@ -145,6 +145,7 @@ fn main() {
 		.add_systems(Startup, setup_system)
 		.add_systems(Update, ui_system)
 		.add_systems(Update, text_update_system)
+		.add_systems(Update, tile_background_system)
 		.add_systems(Update, movable_system)
 		.add_systems(Update, player_laser_hit_enemy_system)
 		.add_systems(Update, enemy_laser_hit_player_system)
@@ -176,10 +177,11 @@ fn setup_system(
 	query: Query<&Window, With<PrimaryWindow>>,
 ) {
 	// camera
-	commands.spawn(Camera2dBundle::default());
+	commands.spawn(
+		(Camera2dBundle::default(), CameraMarker));
 
 	// capture window size
-	let Ok(primary) = query.get_single() else {
+		let Ok(primary) = query.get_single() else {
 		return;
 	};
 	let (win_w, win_h) = (primary.width(), primary.height());
@@ -244,24 +246,24 @@ fn setup_system(
         ScoreText,
     ));
 
-    commands.spawn((
-        // Create a TextBundle that has a Text with a list of sections.
-        TextBundle::from_sections([
-            TextSection::new(
-                "Weapon Charge:",
-                TextStyle {
-                    font: asset_server.load("fonts/ShareTechMono-Regular.ttf"),
-                    font_size: 20.0,
-                    ..default()
-                },
-            )
-        ]).with_style(Style {
-            position_type: PositionType::Absolute,
-            bottom: Val::Px(30.0),
-            left: Val::Px(35.0),
-            ..default()
-        }),
-    ));
+    // commands.spawn((
+    //     // Create a TextBundle that has a Text with a list of sections.
+    //     TextBundle::from_sections([
+    //         TextSection::new(
+    //             "Weapon Charge:",
+    //             TextStyle {
+    //                 font: asset_server.load("fonts/ShareTechMono-Regular.ttf"),
+    //                 font_size: 20.0,
+    //                 ..default()
+    //             },
+    //         )
+    //     ]).with_style(Style {
+    //         position_type: PositionType::Absolute,
+    //         bottom: Val::Px(30.0),
+    //         left: Val::Px(35.0),
+    //         ..default()
+    //     }),
+    // ));
 
 	//Text in the bottom right to show whether Codepilot is running
 	commands.spawn((
@@ -293,26 +295,75 @@ fn setup_system(
 		CodePilotActiveText,
 	));
 
-	commands.spawn((SpriteBundle {
-        sprite: Sprite {
-            color: Color::rgb(0.3, 0.3, 0.3),
-            custom_size: Some(Vec2::new(100.0, 10.0)),
+	commands
+    .spawn(NodeBundle {
+        style: Style {
+            width: Val::Percent(100.0),
+			position_type: PositionType::Absolute,
+            justify_content: JustifyContent::FlexStart,
+            bottom: Val::Px(0.0),
+            left: Val::Px(0.0),
             ..default()
         },
-        transform: Transform::from_translation(Vec3::new(-win_w/2. + 100., -win_h/2.0 + 20., 0.)),
         ..default()
-    }, WeaponChargeBar));
-
-	// commands.spawn((SpriteBundle {
-    //     sprite: Sprite {
-    //         color: Color::rgb(0.3, 0.3, 0.3),
-    //         custom_size: Some(Vec2::new(100.0, 10.0)),
-    //         ..default()
-    //     },
-    //     transform: Transform::from_translation(Vec3::new(-win_w/2. + 100., -win_h/2.0 + 20., 0.)),
-    //     ..default()
-    // }, WeaponChargeBarOutline));
+	}).with_children(|parent| {
+		spawn_bar(parent, asset_server);
+	});
 	
+}
+
+fn spawn_bar(parent: &mut ChildBuilder, asset_server: Res<AssetServer>) {
+    parent
+        .spawn(NodeBundle {
+            style: Style {
+				padding: UiRect::all(Val::Px(20.)),
+                height: Val::Px(30.0),
+                width: Val::Px(400.0),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::FlexStart,
+                flex_direction: FlexDirection::Row,
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .with_children(|parent| {
+
+            parent.spawn(TextBundle::from_section(
+				"Weapon Charge:",
+				TextStyle {
+					font: asset_server.load("fonts/ShareTechMono-Regular.ttf"),
+					font_size: 20.0,
+					..default()
+				}));
+
+            parent
+                .spawn(NodeBundle {
+                    style: Style {
+                        width: Val::Px(100.),
+                        height: Val::Px(10.),
+                        padding: UiRect::all(Val::Px(1.)),
+                        align_items: AlignItems::Stretch,
+                        top: Val::Px(2.0),
+                        left: Val::Px(6.0),
+                        ..Default::default()
+                    },
+                    background_color: Color::BLACK.into(),
+                    ..Default::default()
+                })
+                .with_children(|parent| {
+                    parent.spawn((
+                        NodeBundle {
+                            style: Style {
+                                width : Val::Percent(50.0),
+                                ..Default::default()
+                            },
+                            background_color: Color::GREEN.into(),
+                            ..Default::default()
+                        },
+                        WeaponChargeBar,
+                    ));
+                });
+        });
 }
 
 //system for weapon cooldown
@@ -320,7 +371,7 @@ fn weapon_cooldown_system(
 	mut player_state: ResMut<PlayerState>,
 	time: Res<Time>,
 	win_size: Res<WinSize>,
-	mut chargebarquery: Query<(&mut Sprite, &mut Transform), With<WeaponChargeBar>>,
+	mut chargebarquery: Query<(&mut Style, &mut BackgroundColor), With<WeaponChargeBar>>,
 ) {
 	if player_state.weapon_cooldown > 0. {
 		player_state.weapon_cooldown -= time.delta_seconds();
@@ -330,12 +381,10 @@ fn weapon_cooldown_system(
 		} 
 	}
 
-	for (mut sprite, mut transform) in chargebarquery.iter_mut() {
-		sprite.color = Color::rgb(1.0 * (player_state.weapon_cooldown / player_state.weapon_cooldown_max), 1.0 * (1. - player_state.weapon_cooldown / player_state.weapon_cooldown_max), 0.2);
+	for (mut style, mut color) in chargebarquery.iter_mut() {
+		color.0 = Color::rgb(1.0 * (player_state.weapon_cooldown / player_state.weapon_cooldown_max), 1.0 * (1. - player_state.weapon_cooldown / player_state.weapon_cooldown_max), 0.2);
 		
-		sprite.custom_size = Some(Vec2::new(100.0 * (1.0 - player_state.weapon_cooldown / player_state.weapon_cooldown_max), 10.0));
-		transform.translation = Vec3::new(-win_size.w/2. + 100., -win_size.h/2.0 + 20., 0.);
-
+		style.width = Val::Percent(100.0 * (1.0 - player_state.weapon_cooldown / player_state.weapon_cooldown_max));
 	}
 }
 
@@ -363,16 +412,34 @@ fn text_update_system(
 	}
 }
 
+
+
 fn movable_system(
 	mut commands: Commands,
 	time: Res<Time>,
 	win_size: Res<WinSize>,
 	ui_state: Res<UiState>,
-	mut query: Query<(Entity, &Velocity, &mut Transform, &Movable)>,
+	mut player_query: Query<(&mut Transform, &mut Velocity, &mut Movable), (With<Player>, Without<CameraMarker>)>,
+	mut camera_query: Query<&mut Transform, (With<CameraMarker>, Without<Player>)>,
+	mut other_movable_query: Query<(Entity, &Velocity, &mut Transform, &Movable), (Without<Player>, Without<CameraMarker>)>
 ) {
 	let delta = time.delta_seconds();
 
-	for (entity, velocity, mut transform, movable) in &mut query {
+	if let Ok((mut player_tf, player_velocity, _)) = player_query.get_single_mut() {
+
+		player_tf.translation.x += player_velocity.x * delta * BASE_SPEED;
+		player_tf.translation.y += player_velocity.y * delta * BASE_SPEED;
+
+		player_tf.rotate_z(
+			player_velocity.omega * delta * BASE_ROT_SPEED
+		);
+
+		if let Ok(mut camera_tf) = camera_query.get_single_mut() {
+			camera_tf.translation = player_tf.translation;
+		}
+	}
+	
+	for (entity, velocity, mut transform, movable) in &mut other_movable_query {
 		transform.translation.x += velocity.x * delta * BASE_SPEED;
 		transform.translation.y += velocity.y * delta * BASE_SPEED;
 
@@ -380,30 +447,30 @@ fn movable_system(
 			velocity.omega * delta * BASE_ROT_SPEED
 		);
 
-		if movable.auto_despawn {
-			// despawn when out of screen
-			const MARGIN: f32 = 200.;
-			if transform.translation.y > win_size.h / 2. + MARGIN
-				|| transform.translation.y < -win_size.h / 2. - MARGIN
-				|| transform.translation.x > win_size.w / 2. + MARGIN
-				|| transform.translation.x < -win_size.w / 2. - MARGIN
-			{
-				commands.entity(entity).despawn();
-			}
-		} else {
-			// wrap on other side of screen
-			if transform.translation.y > win_size.h / 2. {
-				transform.translation.y = -win_size.h / 2.;
-			} else if transform.translation.y < -win_size.h / 2. {
-				transform.translation.y = win_size.h / 2.;
-			}
+		// if movable.auto_despawn {
+		// 	// despawn when out of screen
+		// 	const MARGIN: f32 = 200.;
+		// 	if transform.translation.y > win_size.h / 2. + MARGIN
+		// 		|| transform.translation.y < -win_size.h / 2. - MARGIN
+		// 		|| transform.translation.x > win_size.w / 2. + MARGIN
+		// 		|| transform.translation.x < -win_size.w / 2. - MARGIN
+		// 	{
+		// 		commands.entity(entity).despawn();
+		// 	}
+		// } else {
+		// 	// wrap on other side of screen
+		// 	if transform.translation.y > win_size.h / 2. {
+		// 		transform.translation.y = -win_size.h / 2.;
+		// 	} else if transform.translation.y < -win_size.h / 2. {
+		// 		transform.translation.y = win_size.h / 2.;
+		// 	}
 
-			if transform.translation.x > win_size.w / 2. - 300. {
-				transform.translation.x = -win_size.w / 2.;
-			} else if transform.translation.x < -win_size.w / 2. {
-				transform.translation.x = win_size.w / 2. - 300.;
-			}
-		}
+		// 	if transform.translation.x > win_size.w / 2. - 300. {
+		// 		transform.translation.x = -win_size.w / 2.;
+		// 	} else if transform.translation.x < -win_size.w / 2. {
+		// 		transform.translation.x = win_size.w / 2. - 300.;
+		// 	}
+		// }
 	}
 }
 
@@ -557,5 +624,77 @@ fn explosion_animation_system(
 				commands.entity(entity).despawn();
 			}
 		}
+	}
+}
+
+#[derive(Component)]
+pub struct Tile {
+	pub x: i32,
+	pub y: i32
+}
+
+fn tile_background_system(
+	mut commands: Commands,
+	win_size: Res<WinSize>,
+	game_textures: Res<GameTextures>,
+	camera_query: Query<&Transform, (With<CameraMarker>, Without<Player>)>,
+	tile_query: Query<(Entity, &Tile)>
+	
+) {
+
+
+	if let Ok(camera_tf) = camera_query.get_single() {
+		let current_tile_x = (camera_tf.translation.x / win_size.w).floor() as i32;
+		let cureent_tile_y = (camera_tf.translation.y / win_size.h).floor() as i32;
+
+		tile_query.for_each(|(ent, tile)| {
+			if (tile.x - current_tile_x).abs() > 1 || (tile.y - cureent_tile_y).abs() > 1 {
+				commands.entity(ent).despawn();
+				info!("Despawning")
+			}
+		});
+
+		// spawn tiles around the camera
+		for x in -1..=1 {
+			for y in -1..=1 {
+				let tile_x = current_tile_x + x;
+				let tile_y = cureent_tile_y + y;
+
+				if tile_query.iter().find(|(_, tile)| tile.x == tile_x && tile.y == tile_y).is_none() {
+					commands
+						.spawn(SpriteBundle {
+							texture: game_textures.player_laser.clone(),
+							transform: Transform {
+								translation: Vec3::new((tile_x as f32) * win_size.w, (tile_y as f32)* win_size.h, 0.),
+								..Default::default()
+							},
+							..Default::default()
+						})
+						.insert(Tile {x: tile_x, y: tile_y});
+
+					info!("Spawning")
+
+				}
+			}
+		};
+		
+		// commands
+		// 	.spawn(SpriteBundle {
+		// 		// texture: game_textures.player_laser.clone(),
+		// 		transform: Transform {
+		// 			translation: Vec3::new(current_tile_x, cureent_tile_y, 0.),
+		// 			..Default::default()
+		// 		},
+		// 		..Default::default()
+		// 	})
+		// 	.insert(Tile(Vec2::new(current_tile_x, cureent_tile_y)));
+
+
+
+		// info!("Tile coor: {} {}", current_tile_x, cureent_tile_y)
+
+	
+
+
 	}
 }

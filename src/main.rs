@@ -1,5 +1,8 @@
 #![allow(unused)] // silence unused warnings while exploring (to comment out)
 
+use bevy::core_pipeline::bloom::BloomSettings;
+use bevy::core_pipeline::tonemapping::Tonemapping;
+use bevy::sprite::MaterialMesh2dBundle;
 use bevy::{math::Vec3Swizzles, diagnostic::LogDiagnosticsPlugin};
 use bevy::prelude::*;
 use bevy::sprite::collide_aabb::collide;
@@ -26,6 +29,10 @@ mod player;
 
 // region:    --- Asset Constants
 
+const STAR_SPRITE: &str = "star2.png"; 
+const TEST_SPRITE: &str = "test2.png"; 
+
+
 const PLAYER_SPRITE: &str = "lighter_nose.png";
 const PLAYER_SIZE: (f32, f32) = (144., 75.);
 const PLAYER_LASER_SPRITE: &str = "laser_a_01.png";
@@ -41,6 +48,8 @@ const EXPLOSION_ENGINE_SHEET: &str = "explo_b_sheet.png";
 const EXPLOSION_LEN: usize = 16;
 
 const SPRITE_SCALE: f32 = 0.5;
+
+const NEAR_WHITE: Color = Color::rgb(3.0, 3.0, 5.0);
 
 // endregion: --- Asset Constants
 
@@ -65,6 +74,7 @@ pub struct WinSize {
 
 #[derive(Resource)]
 struct GameTextures {
+	star: Handle<Image>,
 	player: Handle<Image>,
 	player_laser: Handle<Image>,
 	enemy: Handle<Image>,
@@ -131,7 +141,8 @@ impl PlayerState {
 
 fn main() {
 	App::new()
-		.insert_resource(ClearColor(Color::rgb(0.04, 0.04, 0.04)))
+		// .insert_resource(ClearColor(Color::rgb(0., 0., 0.)))
+		.insert_resource(ClearColor(Color::rgb(0.10, 0.10, 0.12)))
 		.init_resource::<UiState>()
 		.init_resource::<CodePilotCode>()
 		.add_plugins(FrameTimeDiagnosticsPlugin::default())
@@ -183,7 +194,18 @@ fn setup_system(
 ) {
 	// camera
 	commands.spawn(
-		(Camera2dBundle::default(), CameraMarker));
+		(
+			Camera2dBundle {
+				camera: Camera {
+					hdr: true, // 1. HDR is required for bloom
+					..default()
+				},
+				tonemapping: Tonemapping::TonyMcMapface, // 2. Using a tonemapper that desaturates to white is recommended
+				..default()
+			},
+			CameraMarker,
+        	BloomSettings::NATURAL
+		));
 
 	// capture window size
 		let Ok(primary) = query.get_single() else {
@@ -211,6 +233,7 @@ fn setup_system(
 
 	// add GameTextures resource
 	let game_textures = GameTextures {
+		star: asset_server.load(STAR_SPRITE),
 		player: asset_server.load(PLAYER_SPRITE),
 		player_laser: asset_server.load(PLAYER_LASER_SPRITE),
 		enemy: asset_server.load(ENEMY_SPRITE),
@@ -221,7 +244,22 @@ fn setup_system(
 	commands.insert_resource(game_textures);
 	commands.insert_resource(EnemyCount(0));
 
+	commands.spawn(SpriteBundle {
+										texture: asset_server.load(TEST_SPRITE),
+										sprite: Sprite {
+											color: Color::rgb(4.0, 4.0, 6.0),
+											..Default::default()
+										},
+										transform: Transform {
+											scale: Vec3::new(0.3, 0.3, 1.),
+											..Default::default()
+										},
+										..Default::default()
+									});
+
 	//Setup the HUD
+
+	
 	
 	//Text in the top left to show current score
     commands.spawn((
@@ -597,7 +635,11 @@ fn explosion_to_spawn_system(
 			SpriteSheetBundle {
 				texture_atlas: if (explosion_to_spawn.is_engine) {game_textures.engine.clone()} else {game_textures.explosion.clone()},
 				transform: explosion_to_spawn.transform.clone(),
-				..Default::default()
+				sprite: TextureAtlasSprite {
+					color: Color::rgb(5.0, 5.0, 5.0),
+					..Default::default()
+				}, 
+				..Default::default() 
 			}
 		};
 
@@ -643,6 +685,8 @@ pub struct Star;
 
 fn tile_background_system(
 	mut commands: Commands,
+	mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
 	win_size: Res<WinSize>,
 	game_textures: Res<GameTextures>,
 	camera_query: Query<&Transform, (With<CameraMarker>, Without<Player>)>,
@@ -658,7 +702,6 @@ fn tile_background_system(
 		tile_query.for_each(|(ent, tile)| {
 			if (tile.x - current_tile_x).abs() > 1 || (tile.y - cureent_tile_y).abs() > 1 {
 				commands.entity(ent).despawn();
-				info!("Despawning")
 			}
 		});
 
@@ -671,7 +714,6 @@ fn tile_background_system(
 				if tile_query.iter().find(|(_, tile)| tile.x == tile_x && tile.y == tile_y).is_none() {
 					commands
 						.spawn(SpriteBundle {
-							texture: game_textures.player_laser.clone(),
 							transform: Transform {
 								translation: Vec3::new((tile_x as f32) * win_size.w, (tile_y as f32)* win_size.h, 0.),
 								..Default::default()
@@ -687,45 +729,63 @@ fn tile_background_system(
 							for i in 0..20 {
 								let x = rng.gen_range(-win_size.w / 2. .. win_size.w / 2.);
 								let y = rng.gen_range(-win_size.h / 2. .. win_size.h / 2.);
-								let scale = rng.gen_range(0.1.. 0.5);
+								let scale = rng.gen_range(0.5.. 1.0);
 								let rotation = rng.gen_range(0. .. 2. * PI);
-								info!("Star: {} {} {} {}", x, y, scale, rotation);
-								parent.spawn(SpriteBundle {
-									texture: game_textures.player_laser.clone(),
+								parent.spawn(
+								(SpatialBundle {
 									transform: Transform {
 										translation: Vec3::new(x, y, 0.),
-										rotation: Quat::from_rotation_z(rotation),
+										rotation: Quat::from_rotation_z(0.),
 										scale: Vec3::new(scale, scale, 1.),
 										..Default::default()
 									},
-									..Default::default()
-								})
-								.insert(Star);
+									visibility: Default::default(),
+									inherited_visibility: Default::default(),
+									view_visibility: Default::default(),
+									global_transform: Default::default(),
+								}))
+								.insert(Star)
+								.with_children(|sp_parent| {
+									sp_parent.spawn(SpriteBundle {
+										texture: game_textures.star.clone(),
+										sprite: Sprite {
+											color: Color::rgb(2.0, 1.5, 1.5),
+											..Default::default()
+										},
+										transform: Transform {
+											scale: Vec3::new(1.0, 1.0, 1.),
+											..Default::default()
+										},
+										..Default::default()									
+									});
+									// sp_parent.spawn(
+									// 	MaterialMesh2dBundle {
+									// 		mesh: meshes.add(shape::Quad::new(Vec2::new(0.5, 25.)).into()).into(),
+									// 		material: materials.add(ColorMaterial::from(Color::rgb(2.5, 2.0, 2.0))),
+									// 		..default()
+									// 	}
+									// );
+									// sp_parent.spawn(
+									// 	MaterialMesh2dBundle {
+									// 		mesh: meshes.add(shape::Quad::new(Vec2::new(25., 0.5)).into()).into(),
+									// 		material: materials.add(ColorMaterial::from(Color::rgb(2.5, 2.0, 2.0))),
+									// 		..default()
+									// 	}
+									// );
+									sp_parent.spawn(
+										MaterialMesh2dBundle {
+											mesh: meshes.add(shape::Circle::new(3.).into()).into(),
+											material: materials.add(ColorMaterial::from(Color::rgb(6.0, 6.0, 9.0))),
+											..default()
+										}
+									);									
+								});
 							}
 						});
-
-					info!("Spawning")
 
 				}
 			}
 		};
-		
-		// commands
-		// 	.spawn(SpriteBundle {
-		// 		// texture: game_textures.player_laser.clone(),
-		// 		transform: Transform {
-		// 			translation: Vec3::new(current_tile_x, cureent_tile_y, 0.),
-		// 			..Default::default()
-		// 		},
-		// 		..Default::default()
-		// 	})
-		// 	.insert(Tile(Vec2::new(current_tile_x, cureent_tile_y)));
-
-
-
-		// info!("Tile coor: {} {}", current_tile_x, cureent_tile_y)
-
-	
 
 
 	}

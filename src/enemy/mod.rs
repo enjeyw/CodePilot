@@ -71,6 +71,10 @@ fn enemy_fire_system(
 		commands
 			.spawn(SpriteBundle {
 				texture: game_textures.enemy_laser.clone(),
+				sprite: Sprite {
+					color: Color::rgb(5.0, 5.0, 5.0),
+					..Default::default()
+				},
 				transform: Transform {
 					translation: Vec3::new(x, y - 15., 0.),
 					rotation: tf.rotation,

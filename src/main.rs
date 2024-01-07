@@ -21,11 +21,13 @@ use rand::{Rng, rngs::StdRng, SeedableRng, thread_rng};
 
 use enemy::EnemyPlugin;
 use player::PlayerPlugin;
+use post_processing::{PostProcessPlugin, PostProcessSettings};
 use std::{collections::HashSet, f32::consts::PI};
 
 mod components;
 mod enemy;
 mod player;
+mod post_processing;
 
 // region:    --- Asset Constants
 
@@ -142,7 +144,7 @@ impl PlayerState {
 fn main() {
 	App::new()
 		// .insert_resource(ClearColor(Color::rgb(0., 0., 0.)))
-		.insert_resource(ClearColor(Color::rgb(0.10, 0.10, 0.12)))
+		.insert_resource(ClearColor(Color::rgb(0.00, 0.00, 0.08)))
 		.init_resource::<UiState>()
 		.init_resource::<CodePilotCode>()
 		.add_plugins(FrameTimeDiagnosticsPlugin::default())
@@ -155,6 +157,7 @@ fn main() {
 			}),
 			..Default::default()
 		}))
+		// .add_plugins(PostProcessPlugin) //Can't have bloom and Post Pipeline :(
 		.add_plugins(EguiPlugin)
 		.add_plugins(PlayerPlugin)
 		.add_plugins(EnemyPlugin)
@@ -204,7 +207,11 @@ fn setup_system(
 				..default()
 			},
 			CameraMarker,
-        	BloomSettings::NATURAL
+        	BloomSettings::NATURAL,
+			PostProcessSettings {
+				intensity: 0.0002,
+				..default()
+			},
 		));
 
 	// capture window size
@@ -247,7 +254,7 @@ fn setup_system(
 	commands.spawn(SpriteBundle {
 										texture: asset_server.load(TEST_SPRITE),
 										sprite: Sprite {
-											color: Color::rgb(4.0, 4.0, 6.0),
+											color: Color::rgb(3.0, 6.0, 5.0),
 											..Default::default()
 										},
 										transform: Transform {
@@ -693,7 +700,6 @@ fn tile_background_system(
 	tile_query: Query<(Entity, &Tile)>
 	
 ) {
-
 
 	if let Ok(camera_tf) = camera_query.get_single() {
 		let current_tile_x = (camera_tf.translation.x / win_size.w).floor() as i32;

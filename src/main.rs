@@ -3,6 +3,7 @@
 use bevy::core_pipeline::bloom::BloomSettings;
 use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::sprite::MaterialMesh2dBundle;
+use bevy::text::BreakLineOn;
 use bevy::{math::Vec3Swizzles, diagnostic::LogDiagnosticsPlugin};
 use bevy::prelude::*;
 use bevy::sprite::collide_aabb::collide;
@@ -195,24 +196,30 @@ fn setup_system(
 	mut texture_atlases: ResMut<Assets<TextureAtlas>>,
 	query: Query<&Window, With<PrimaryWindow>>,
 ) {
+
+	let mut bloom_settings = BloomSettings::NATURAL;
+	bloom_settings.intensity = 0.15;
+
 	// camera
 	commands.spawn(
 		(
 			Camera2dBundle {
 				camera: Camera {
-					hdr: true, // 1. HDR is required for bloom
+					hdr: true,
 					..default()
 				},
-				tonemapping: Tonemapping::TonyMcMapface, // 2. Using a tonemapper that desaturates to white is recommended
+				tonemapping: Tonemapping::TonyMcMapface,
 				..default()
 			},
-			CameraMarker,
-        	BloomSettings::NATURAL,
+        	bloom_settings,
 			PostProcessSettings {
 				intensity: 0.0002,
 				..default()
 			},
+			CameraMarker
 		));
+	
+
 
 	// capture window size
 		let Ok(primary) = query.get_single() else {
@@ -252,17 +259,38 @@ fn setup_system(
 	commands.insert_resource(EnemyCount(0));
 
 	commands.spawn(SpriteBundle {
-										texture: asset_server.load(TEST_SPRITE),
-										sprite: Sprite {
-											color: Color::rgb(3.0, 6.0, 5.0),
-											..Default::default()
-										},
-										transform: Transform {
-											scale: Vec3::new(0.3, 0.3, 1.),
-											..Default::default()
-										},
-										..Default::default()
-									});
+			texture: asset_server.load(TEST_SPRITE),
+			sprite: Sprite {
+				color: Color::rgb(1.4, 2.0, 1.8),
+				..Default::default()
+			},
+			transform: Transform {
+				scale: Vec3::new(0.3, 0.3, 1.),
+				..Default::default()
+			},
+			..Default::default()
+	}).with_children(|parent| {
+		parent.spawn(Text2dBundle {
+			text: Text {
+				sections: vec![TextSection::new(
+					"Shields: 100%",
+					TextStyle {
+						font: asset_server.load("fonts/ShareTechMono-Regular.ttf"),
+						font_size: 50.0,
+						color: Color::rgb(1.0, 4.0, 2.0),
+						..default()
+					}
+				)],
+				alignment: TextAlignment::Left,
+				linebreak_behavior: BreakLineOn::WordBoundary,
+			},
+			transform: Transform {
+				translation: Vec3::new(-300., -200., 0.0),
+				..Default::default()
+			},
+			..default()
+		});
+	});
 
 	//Setup the HUD
 
@@ -755,7 +783,7 @@ fn tile_background_system(
 									sp_parent.spawn(SpriteBundle {
 										texture: game_textures.star.clone(),
 										sprite: Sprite {
-											color: Color::rgb(2.0, 1.5, 1.5),
+											color: Color::rgb(1.8, 1.3, 1.3),
 											..Default::default()
 										},
 										transform: Transform {
@@ -781,7 +809,7 @@ fn tile_background_system(
 									sp_parent.spawn(
 										MaterialMesh2dBundle {
 											mesh: meshes.add(shape::Circle::new(3.).into()).into(),
-											material: materials.add(ColorMaterial::from(Color::rgb(6.0, 6.0, 9.0))),
+											material: materials.add(ColorMaterial::from(Color::rgb(5.0, 5.0, 7.0))),
 											..default()
 										}
 									);									

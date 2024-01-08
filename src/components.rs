@@ -34,6 +34,19 @@ impl From<(f32, f32)> for SpriteSize {
 
 // endregion: --- Common Components
 
+// region:    --- Map Components
+
+#[derive(Component)]
+pub struct Tile {
+	pub x: i32,
+	pub y: i32
+}
+
+#[derive(Component)]
+pub struct Star;
+
+// endrefion: --- Map Components
+
 // region:    --- Player Components
 #[derive(Component)]
 pub struct Player;

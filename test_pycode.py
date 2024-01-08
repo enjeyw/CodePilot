@@ -13,7 +13,7 @@ for position in enemy_positions:
 
     dot_product = vec_from_player[0] * player_heading[0] + vec_from_player[1] * player_heading[1]
 
-    print(dot_product)
-
     if dot_product > 0.99:
-        fire = True
+        print(f"distance_from_player {distance_from_player}")
+        if distance_from_player < 10:
+            fire = True

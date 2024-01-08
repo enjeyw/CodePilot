@@ -1,6 +1,10 @@
 #![allow(unused)] // silence unused warnings while exploring (to comment out)
 
-use bevy::math::Vec3Swizzles;
+use bevy::core_pipeline::bloom::BloomSettings;
+use bevy::core_pipeline::tonemapping::Tonemapping;
+use bevy::sprite::MaterialMesh2dBundle;
+use bevy::text::BreakLineOn;
+use bevy::{math::Vec3Swizzles, diagnostic::LogDiagnosticsPlugin};
 use bevy::prelude::*;
 use bevy::sprite::collide_aabb::collide;
 use bevy::window::PrimaryWindow;
@@ -8,20 +12,29 @@ use components::{
 	CameraMarker, Enemy, Explosion, ExplosionTimer, ExplosionToSpawn, FromEnemy, FromPlayer, Laser, Movable,
 	Player, SpriteSize, Velocity, ScoreText, MaxScoreText, CodePilotActiveText, WeaponChargeBar
 };
+use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
 use rustpython_vm as vm;
 use vm::{builtins::PyCode, PyRef};
 use std::sync::atomic::{AtomicBool, Ordering};
+use rand::{Rng, rngs::StdRng, SeedableRng, thread_rng};
+
 
 use enemy::EnemyPlugin;
 use player::PlayerPlugin;
+use post_processing::{PostProcessPlugin, PostProcessSettings};
 use std::{collections::HashSet, f32::consts::PI};
 
 mod components;
 mod enemy;
 mod player;
+mod post_processing;
 
 // region:    --- Asset Constants
+
+const STAR_SPRITE: &str = "star2.png"; 
+const TEST_SPRITE: &str = "test2.png"; 
+
 
 const PLAYER_SPRITE: &str = "lighter_nose.png";
 const PLAYER_SIZE: (f32, f32) = (144., 75.);
@@ -38,6 +51,8 @@ const EXPLOSION_ENGINE_SHEET: &str = "explo_b_sheet.png";
 const EXPLOSION_LEN: usize = 16;
 
 const SPRITE_SCALE: f32 = 0.5;
+
+const NEAR_WHITE: Color = Color::rgb(3.0, 3.0, 5.0);
 
 // endregion: --- Asset Constants
 
@@ -62,6 +77,7 @@ pub struct WinSize {
 
 #[derive(Resource)]
 struct GameTextures {
+	star: Handle<Image>,
 	player: Handle<Image>,
 	player_laser: Handle<Image>,
 	enemy: Handle<Image>,
@@ -128,9 +144,12 @@ impl PlayerState {
 
 fn main() {
 	App::new()
-		.insert_resource(ClearColor(Color::rgb(0.04, 0.04, 0.04)))
+		// .insert_resource(ClearColor(Color::rgb(0., 0., 0.)))
+		.insert_resource(ClearColor(Color::rgb(0.00, 0.00, 0.08)))
 		.init_resource::<UiState>()
 		.init_resource::<CodePilotCode>()
+		.add_plugins(FrameTimeDiagnosticsPlugin::default())
+		.add_plugins(LogDiagnosticsPlugin::default())
 		.add_plugins(DefaultPlugins.set(WindowPlugin {
 			primary_window: Some(Window {
 				title: "Codepilot".into(),
@@ -139,6 +158,7 @@ fn main() {
 			}),
 			..Default::default()
 		}))
+		// .add_plugins(PostProcessPlugin) //Can't have bloom and Post Pipeline :(
 		.add_plugins(EguiPlugin)
 		.add_plugins(PlayerPlugin)
 		.add_plugins(EnemyPlugin)
@@ -176,9 +196,30 @@ fn setup_system(
 	mut texture_atlases: ResMut<Assets<TextureAtlas>>,
 	query: Query<&Window, With<PrimaryWindow>>,
 ) {
+
+	let mut bloom_settings = BloomSettings::NATURAL;
+	bloom_settings.intensity = 0.15;
+
 	// camera
 	commands.spawn(
-		(Camera2dBundle::default(), CameraMarker));
+		(
+			Camera2dBundle {
+				camera: Camera {
+					hdr: true,
+					..default()
+				},
+				tonemapping: Tonemapping::TonyMcMapface,
+				..default()
+			},
+        	bloom_settings,
+			PostProcessSettings {
+				intensity: 0.0002,
+				..default()
+			},
+			CameraMarker
+		));
+	
+
 
 	// capture window size
 		let Ok(primary) = query.get_single() else {
@@ -206,6 +247,7 @@ fn setup_system(
 
 	// add GameTextures resource
 	let game_textures = GameTextures {
+		star: asset_server.load(STAR_SPRITE),
 		player: asset_server.load(PLAYER_SPRITE),
 		player_laser: asset_server.load(PLAYER_LASER_SPRITE),
 		enemy: asset_server.load(ENEMY_SPRITE),
@@ -216,7 +258,43 @@ fn setup_system(
 	commands.insert_resource(game_textures);
 	commands.insert_resource(EnemyCount(0));
 
+	commands.spawn(SpriteBundle {
+			texture: asset_server.load(TEST_SPRITE),
+			sprite: Sprite {
+				color: Color::rgb(1.4, 2.0, 1.8),
+				..Default::default()
+			},
+			transform: Transform {
+				scale: Vec3::new(0.3, 0.3, 1.),
+				..Default::default()
+			},
+			..Default::default()
+	}).with_children(|parent| {
+		parent.spawn(Text2dBundle {
+			text: Text {
+				sections: vec![TextSection::new(
+					"Shields: 100%",
+					TextStyle {
+						font: asset_server.load("fonts/ShareTechMono-Regular.ttf"),
+						font_size: 50.0,
+						color: Color::rgb(1.0, 4.0, 2.0),
+						..default()
+					}
+				)],
+				alignment: TextAlignment::Left,
+				linebreak_behavior: BreakLineOn::WordBoundary,
+			},
+			transform: Transform {
+				translation: Vec3::new(-300., -200., 0.0),
+				..Default::default()
+			},
+			..default()
+		});
+	});
+
 	//Setup the HUD
+
+	
 	
 	//Text in the top left to show current score
     commands.spawn((
@@ -592,7 +670,11 @@ fn explosion_to_spawn_system(
 			SpriteSheetBundle {
 				texture_atlas: if (explosion_to_spawn.is_engine) {game_textures.engine.clone()} else {game_textures.explosion.clone()},
 				transform: explosion_to_spawn.transform.clone(),
-				..Default::default()
+				sprite: TextureAtlasSprite {
+					color: Color::rgb(5.0, 5.0, 5.0),
+					..Default::default()
+				}, 
+				..Default::default() 
 			}
 		};
 
@@ -633,15 +715,19 @@ pub struct Tile {
 	pub y: i32
 }
 
+#[derive(Component)]
+pub struct Star;
+
 fn tile_background_system(
 	mut commands: Commands,
+	mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
 	win_size: Res<WinSize>,
 	game_textures: Res<GameTextures>,
 	camera_query: Query<&Transform, (With<CameraMarker>, Without<Player>)>,
 	tile_query: Query<(Entity, &Tile)>
 	
 ) {
-
 
 	if let Ok(camera_tf) = camera_query.get_single() {
 		let current_tile_x = (camera_tf.translation.x / win_size.w).floor() as i32;
@@ -650,7 +736,6 @@ fn tile_background_system(
 		tile_query.for_each(|(ent, tile)| {
 			if (tile.x - current_tile_x).abs() > 1 || (tile.y - cureent_tile_y).abs() > 1 {
 				commands.entity(ent).despawn();
-				info!("Despawning")
 			}
 		});
 
@@ -663,37 +748,78 @@ fn tile_background_system(
 				if tile_query.iter().find(|(_, tile)| tile.x == tile_x && tile.y == tile_y).is_none() {
 					commands
 						.spawn(SpriteBundle {
-							texture: game_textures.player_laser.clone(),
 							transform: Transform {
 								translation: Vec3::new((tile_x as f32) * win_size.w, (tile_y as f32)* win_size.h, 0.),
 								..Default::default()
 							},
 							..Default::default()
 						})
-						.insert(Tile {x: tile_x, y: tile_y});
+						.insert(Tile {x: tile_x, y: tile_y})
+						.with_children(|parent| {
+							//Spawn Star Sprites for tile with deterministic random Transform
+							let mut rng = thread_rng();
+							// let mut rng = StdRng::seed_from_u64((tile_x.clone() as u64) * 10 + (tile_y.clone() as u64));
 
-					info!("Spawning")
+							for i in 0..20 {
+								let x = rng.gen_range(-win_size.w / 2. .. win_size.w / 2.);
+								let y = rng.gen_range(-win_size.h / 2. .. win_size.h / 2.);
+								let scale = rng.gen_range(0.5.. 1.0);
+								let rotation = rng.gen_range(0. .. 2. * PI);
+								parent.spawn(
+								(SpatialBundle {
+									transform: Transform {
+										translation: Vec3::new(x, y, 0.),
+										rotation: Quat::from_rotation_z(0.),
+										scale: Vec3::new(scale, scale, 1.),
+										..Default::default()
+									},
+									visibility: Default::default(),
+									inherited_visibility: Default::default(),
+									view_visibility: Default::default(),
+									global_transform: Default::default(),
+								}))
+								.insert(Star)
+								.with_children(|sp_parent| {
+									sp_parent.spawn(SpriteBundle {
+										texture: game_textures.star.clone(),
+										sprite: Sprite {
+											color: Color::rgb(1.8, 1.3, 1.3),
+											..Default::default()
+										},
+										transform: Transform {
+											scale: Vec3::new(1.0, 1.0, 1.),
+											..Default::default()
+										},
+										..Default::default()									
+									});
+									// sp_parent.spawn(
+									// 	MaterialMesh2dBundle {
+									// 		mesh: meshes.add(shape::Quad::new(Vec2::new(0.5, 25.)).into()).into(),
+									// 		material: materials.add(ColorMaterial::from(Color::rgb(2.5, 2.0, 2.0))),
+									// 		..default()
+									// 	}
+									// );
+									// sp_parent.spawn(
+									// 	MaterialMesh2dBundle {
+									// 		mesh: meshes.add(shape::Quad::new(Vec2::new(25., 0.5)).into()).into(),
+									// 		material: materials.add(ColorMaterial::from(Color::rgb(2.5, 2.0, 2.0))),
+									// 		..default()
+									// 	}
+									// );
+									sp_parent.spawn(
+										MaterialMesh2dBundle {
+											mesh: meshes.add(shape::Circle::new(3.).into()).into(),
+											material: materials.add(ColorMaterial::from(Color::rgb(5.0, 5.0, 7.0))),
+											..default()
+										}
+									);									
+								});
+							}
+						});
 
 				}
 			}
 		};
-		
-		// commands
-		// 	.spawn(SpriteBundle {
-		// 		// texture: game_textures.player_laser.clone(),
-		// 		transform: Transform {
-		// 			translation: Vec3::new(current_tile_x, cureent_tile_y, 0.),
-		// 			..Default::default()
-		// 		},
-		// 		..Default::default()
-		// 	})
-		// 	.insert(Tile(Vec2::new(current_tile_x, cureent_tile_y)));
-
-
-
-		// info!("Tile coor: {} {}", current_tile_x, cureent_tile_y)
-
-	
 
 
 	}

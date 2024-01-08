@@ -3,6 +3,7 @@ use crate::{
 	GameTextures, PlayerState, WinSize, PLAYER_LASER_SIZE, PLAYER_RESPAWN_DELAY, PLAYER_SIZE,
 	SPRITE_SCALE, UiState, CodePilotCode, enemy
 };
+use bevy::sprite::MaterialMesh2dBundle;
 use bevy::{prelude::*, ui};
 use bevy::time::common_conditions::on_timer;
 use rustpython_vm as vm;
@@ -34,6 +35,8 @@ impl Plugin for PlayerPlugin {
 fn player_spawn_system(
 	mut commands: Commands,
 	mut player_state: ResMut<PlayerState>,
+	mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
 	time: Res<Time>,
 	game_textures: Res<GameTextures>,
 	win_size: Res<WinSize>,
@@ -45,6 +48,7 @@ fn player_spawn_system(
 		// add player
 		let bottom = -win_size.h / 4.;
 		commands
+
 			.spawn(SpriteBundle {
 				texture: game_textures.player.clone(),
 				transform: Transform {
@@ -63,6 +67,44 @@ fn player_spawn_system(
 			.insert(SpriteSize::from(PLAYER_SIZE))
 			.insert(Movable { auto_despawn: false })
 			.insert(Velocity { x: 0., y: 0., omega: 0.});
+
+			// .spawn(
+			// 	(SpatialBundle {
+			// 		transform: Transform {
+			// 				translation: Vec3::new(
+			// 					0.,
+			// 					bottom + PLAYER_SIZE.1 / 2. * SPRITE_SCALE + 5.,
+			// 					10.,
+			// 				),
+			// 				rotation: Quat::from_rotation_z(0.),
+			// 				scale: Vec3::new(SPRITE_SCALE, SPRITE_SCALE, 1.),
+			// 				..Default::default()
+			// 			},
+			// 		visibility: Default::default(),
+			// 		inherited_visibility: Default::default(),
+			// 		view_visibility: Default::default(),
+			// 		global_transform: Default::default(),
+			// 	})).with_children(|parent| {
+			// 		parent.spawn(MaterialMesh2dBundle {
+			// 			mesh: meshes.add(shape::RegularPolygon::new(100., 3).into()).into(),
+			// 			material: materials.add(ColorMaterial::from(Color::rgb(6.0, 6.0, 9.0))),
+			// 			transform: Transform {
+			// 				translation: Vec3::new(
+			// 					0.,
+			// 					0.,
+			// 					0.
+			// 				),
+			// 				rotation: Quat::from_rotation_z(-PI/2.),
+			// 				scale: Vec3::new(SPRITE_SCALE, SPRITE_SCALE, 1.),
+			// 				..Default::default()
+			// 			},
+			// 			..default()
+			// 		});
+
+			// 	})
+				
+			
+			
 
 		player_state.spawned();
 	}
@@ -89,6 +131,10 @@ fn try_fire_weapon(
 		commands
 			.spawn(SpriteBundle {
 				texture: game_textures.player_laser.clone(),
+				sprite: Sprite {
+					color: Color::rgb(5.0, 5.0, 5.0),
+					..Default::default()
+				},
 				transform: Transform {
 					translation: Vec3::new(x + x_offset, y, 0.),
 					scale: Vec3::new(SPRITE_SCALE, SPRITE_SCALE, 1.),

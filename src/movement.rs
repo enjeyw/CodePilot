@@ -93,7 +93,7 @@ fn tile_background_system(
 									sp_parent.spawn(
 										MaterialMesh2dBundle {
 											mesh: meshes.add(shape::Circle::new(3.).into()).into(),
-											material: materials.add(ColorMaterial::from(Color::rgb(5.0, 5.0, 7.0))),
+											material: materials.add(ColorMaterial::from(Color::rgb(2., 2., 4.0))),
 											..default()
 										}
 									);									

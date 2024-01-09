@@ -56,7 +56,7 @@ fn enemy_spawn_system(
 }
 
 fn enemy_fire_criteria() -> bool {
-	thread_rng().gen_bool(1. / 300.)
+	thread_rng().gen_bool(1. / 200.)
 }
 
 fn enemy_fire_system(
@@ -65,7 +65,7 @@ fn enemy_fire_system(
 	enemy_query: Query<&Transform, With<Enemy>>,
 ) {
 	for &tf in enemy_query.iter() {
-		let velocity = tf.rotation * Vec3::X * 3.0;
+		let velocity = tf.rotation * Vec3::X * 2.0;
 		let (x, y) = (tf.translation.x, tf.translation.y);
 		// spawn enemy laser sprite
 		commands

@@ -1,4 +1,4 @@
-use crate::components::{FromPlayer, Laser, Movable, Player, SpriteSize, Velocity, ExplosionToSpawn, Enemy};
+use crate::components::{FromPlayer, Laser, Movable, Player, SpriteSize, Velocity, ExplosionToSpawn, Enemy, Weapon, Ship};
 use crate::{
 	GameTextures, PlayerState, WinSize, PLAYER_LASER_SIZE, PLAYER_RESPAWN_DELAY, PLAYER_SIZE,
 	SPRITE_SCALE, UiState, CodePilotCode, enemy
@@ -66,7 +66,11 @@ fn player_spawn_system(
 			.insert(Player)
 			.insert(SpriteSize::from(PLAYER_SIZE))
 			.insert(Movable { auto_despawn: false })
-			.insert(Velocity { x: 0., y: 0., omega: 0.});
+			.insert(Velocity { x: 0., y: 0., omega: 0.})
+			.insert(Ship {
+				max_shields: 1.,
+				shields: 1.,
+			});
 
 			// .spawn(
 			// 	(SpatialBundle {

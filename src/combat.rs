@@ -1,6 +1,9 @@
+use std::fmt::Alignment;
+
 use bevy::{prelude::*, utils::HashSet, sprite::collide_aabb::collide};
 
-use crate::{PlayerState, WinSize, EnemyCount, components::{SpriteSize, Laser, FromPlayer, Enemy, FromEnemy, Player, ExplosionToSpawn, Explosion, ExplosionTimer}, GameTextures, EXPLOSION_LEN};
+use crate::{PlayerState, WinSize, EnemyCount, components::{SpriteSize, Laser, FromPlayer, Enemy, FromEnemy, Player, ExplosionToSpawn, Explosion, ExplosionTimer, Weapon, Ship}, GameTextures, EXPLOSION_LEN};
+use bevy::prelude::Entity;
 
 pub struct CombatPlugin;
 
@@ -14,6 +17,38 @@ impl Plugin for CombatPlugin {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Component)]
+pub enum WeaponType {
+    Laser,
+    EMP,
+}
+
+impl Default for WeaponType {
+    fn default() -> Self {
+        WeaponType::Laser
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Component)]
+pub enum Alignment {
+    Friendly,
+    Enemy,
+}
+
+impl Default for Alignment {
+    fn default() -> Self {
+        Alignment::Friendly
+    }
+}
+
+#[derive(Event)]
+struct FireWeaponEvent {
+    pub weapon_type: WeaponType,
+    pub weapon_alignment: WeaponAlignment,
+    pub firing_entity: Entity
+}
+
+
 fn weapon_cooldown_system(
 	mut player_state: ResMut<PlayerState>,
 	time: Res<Time>,
@@ -26,6 +61,84 @@ fn weapon_cooldown_system(
 			info!("Ready to fire!");
 		} 
 	}
+}
+
+fn try_fire_EMP(
+    mut ev_weapon_fired: EventReader<FireWeaponEvent>,
+    commands: &mut Commands,
+    mut weapon_state: Query<(&mut Weapon)>,
+    mut ship_query: Query<(&mut Ship, &Alignment, &Transform)>
+) {
+
+    for fire_event in ev_weapon_fired.read() {
+
+        if fire_event.weapon_type != WeaponType::EMP {
+            continue;
+        }
+
+        if  let Ok(mut fired_weapon) = weapon_state.get_mut(fire_event.firing_entity) {
+            if fired_weapon.current_charge < 1. {
+                continue;
+            }
+
+            if let Ok((firing_ship, firing_ship_aligmnet, firing_ship_tf)) = ship_query.get_mut(fire_event.firing_entity) {
+                fired_weapon.current_charge = 0.;
+
+                let (x, y) = (firing_ship_tf.translation.x, firing_ship_tf.translation.y);
+
+                // deal damage to enemy ships inversely proportional to distance
+                for (mut ship, ship_alignment, ship_tf) in ship_query.iter_mut() {
+                    if ship_alignment == firing_ship_aligmnet {
+                        continue;
+                    }
+
+                    let (x2, y2) = (ship_tf.translation.x, ship_tf.translation.y);
+                    let distance = ((x2 - x).powi(2) + (y2 - y).powi(2)).sqrt();
+
+                    let damage = 100. / distance;
+
+                    ship.shields -= damage;
+                }
+
+            }
+            
+        }
+
+
+        // if weapon_state. < 1. {
+        //     continue;
+        // }
+    
+        // let (x, y) = (player_tf.translation.x, player_tf.translation.y);
+    
+        // commands
+        //     .spawn(SpriteBundle {
+        //         texture: game_textures.player_laser.clone(),
+        //         sprite: Sprite {
+        //             color: Color::rgb(5.0, 5.0, 5.0),
+        //             ..Default::default()
+        //         },
+        //         transform: Transform {
+        //             translation: Vec3::new(x + x_offset, y, 0.),
+        //             scale: Vec3::new(SPRITE_SCALE, SPRITE_SCALE, 1.),
+        //             rotation: player_tf.rotation
+        //         },
+        //         ..Default::default()
+        //     })
+        //     .insert(Laser)
+        //     .insert(FromPlayer)
+        //     .insert(SpriteSize::from(PLAYER_LASER_SIZE))
+        //     .insert(Movable { auto_despawn: true })
+        //     .insert(Velocity { x: velocity.x, y: velocity.y, omega: 0.});
+        
+    
+    
+        // player_state.weapon_cooldown = player_state.weapon_cooldown_max;
+    
+
+    }
+
+	
 }
 
 #[allow(clippy::type_complexity)] // for the Query types.

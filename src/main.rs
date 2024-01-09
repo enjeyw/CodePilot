@@ -184,7 +184,7 @@ fn setup_system(
 	bloom_settings.intensity = 0.15;
 
 	// camera
-	commands.spawn(
+	let camera_id: Entity = commands.spawn(
 		(
 			Camera2dBundle {
 				camera: Camera {
@@ -200,7 +200,9 @@ fn setup_system(
 				..default()
 			},
 			CameraMarker
-		));
+		)).id();
+
+	camera_id.index();
 	
 
 

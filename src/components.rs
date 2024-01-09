@@ -47,6 +47,12 @@ pub struct Star;
 
 // endrefion: --- Map Components
 
+#[derive(Component)]
+pub struct Ship {
+	pub max_shields: f32,
+	pub shields: f32,
+}
+
 // region:    --- Player Components
 #[derive(Component)]
 pub struct Player;
@@ -62,6 +68,17 @@ pub struct Enemy;
 #[derive(Component)]
 pub struct FromEnemy;
 // endregion: --- Enemy Components
+
+// region:	--- Weapon Components
+#[derive(Component)]
+pub struct Weapon {
+	pub current_charge: f32,
+	pub charge_rate: f32,
+}
+
+pub struct EMP;
+
+// endregion: --- Weapon Components
 
 // region:    --- Explosion Components
 #[derive(Component)]

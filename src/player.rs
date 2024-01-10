@@ -114,6 +114,29 @@ fn player_spawn_system(
 	}
 }
 
+fn player_upgrade_system(
+	commands: &mut Commands,
+	player_state: &mut ResMut<PlayerState>,
+	player_query: &mut Query<Entity, With<Player>>,
+) {
+	if player_state.score >= 10 {
+		let child = commands.spawn(Weapon {
+			current_charge: 0.,
+			charge_rate: 0.1,
+		}).id();
+
+		if let Ok(player) = player_query.get_single_mut() {
+			commands.entity(player).push_children(&[child]);
+		}
+
+		
+
+
+
+
+	}
+}
+
 fn try_fire_weapon(
 	commands: &mut Commands,
 	game_textures: &Res<GameTextures>,

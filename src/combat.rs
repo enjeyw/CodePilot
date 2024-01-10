@@ -1,5 +1,3 @@
-use std::fmt::Alignment;
-
 use bevy::{prelude::*, utils::HashSet, sprite::collide_aabb::collide};
 
 use crate::{PlayerState, WinSize, EnemyCount, components::{SpriteSize, Laser, FromPlayer, Enemy, FromEnemy, Player, ExplosionToSpawn, Explosion, ExplosionTimer, Weapon, Ship}, GameTextures, EXPLOSION_LEN};
@@ -30,21 +28,21 @@ impl Default for WeaponType {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Component)]
-pub enum Alignment {
+pub enum Allegiance {
     Friendly,
     Enemy,
 }
 
-impl Default for Alignment {
+impl Default for Allegiance {
     fn default() -> Self {
-        Alignment::Friendly
+        Allegiance::Friendly
     }
 }
 
 #[derive(Event)]
 struct FireWeaponEvent {
     pub weapon_type: WeaponType,
-    pub weapon_alignment: WeaponAlignment,
+    pub weapon_alignment: Allegiance,
     pub firing_entity: Entity
 }
 
@@ -63,11 +61,11 @@ fn weapon_cooldown_system(
 	}
 }
 
-fn try_fire_EMP(
+fn try_fire_emp(
     mut ev_weapon_fired: EventReader<FireWeaponEvent>,
     commands: &mut Commands,
     mut weapon_state: Query<(&mut Weapon)>,
-    mut ship_query: Query<(&mut Ship, &Alignment, &Transform)>
+    mut ship_query: Query<(&mut Ship, &Allegiance, &Transform)>
 ) {
 
     for fire_event in ev_weapon_fired.read() {
@@ -81,14 +79,20 @@ fn try_fire_EMP(
                 continue;
             }
 
-            if let Ok((firing_ship, firing_ship_aligmnet, firing_ship_tf)) = ship_query.get_mut(fire_event.firing_entity) {
+            let mut firing_xy: Option<(f32,f32)> = None;
+            let mut firing_ship_allegiance: Option<Allegiance> = None;
+
+            if let Ok((firing_ship, fsa, firing_ship_tf)) = ship_query.get_mut(fire_event.firing_entity) {
                 fired_weapon.current_charge = 0.;
+                firing_xy = Some((firing_ship_tf.translation.x, firing_ship_tf.translation.y));
+                firing_ship_allegiance = Some(fsa.clone());
 
-                let (x, y) = (firing_ship_tf.translation.x, firing_ship_tf.translation.y);
+            }
 
+            if let (Some((x, y)), Some(fsa)) = (firing_xy, firing_ship_allegiance) {
                 // deal damage to enemy ships inversely proportional to distance
                 for (mut ship, ship_alignment, ship_tf) in ship_query.iter_mut() {
-                    if ship_alignment == firing_ship_aligmnet {
+                    if *ship_alignment == fsa {
                         continue;
                     }
 
@@ -99,8 +103,10 @@ fn try_fire_EMP(
 
                     ship.shields -= damage;
                 }
-
+                
             }
+
+
             
         }
 

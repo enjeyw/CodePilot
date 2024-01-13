@@ -7,11 +7,15 @@ pub struct CombatPlugin;
 
 impl Plugin for CombatPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, weapon_cooldown_system)
-            .add_systems(Update, player_laser_hit_enemy_system)
-            .add_systems(Update, enemy_laser_hit_player_system)
-            .add_systems(Update, explosion_to_spawn_system)
-            .add_systems(Update, explosion_animation_system);
+        app
+        .add_event::<FireWeaponEvent>()
+        .add_systems(Update, weapon_cooldown_system)
+        .add_systems(Update, player_laser_hit_enemy_system)
+        .add_systems(Update, enemy_laser_hit_player_system)
+        .add_systems(Update, explosion_to_spawn_system)
+        .add_systems(Update, explosion_animation_system)
+        .add_systems(Update, try_fire_emp_listener)
+        .add_systems(Update, ship_destroyed_system);
     }
 }
 
@@ -40,17 +44,17 @@ impl Default for Allegiance {
 }
 
 #[derive(Event)]
-struct FireWeaponEvent {
+pub struct FireWeaponEvent {
     pub weapon_type: WeaponType,
     pub weapon_alignment: Allegiance,
     pub firing_entity: Entity
 }
 
-
 fn weapon_cooldown_system(
 	mut player_state: ResMut<PlayerState>,
 	time: Res<Time>,
 	win_size: Res<WinSize>,
+    mut weapon: Query<(&mut Weapon)>,
 ) {
 	if player_state.weapon_cooldown > 0. {
 		player_state.weapon_cooldown -= time.delta_seconds();
@@ -59,22 +63,41 @@ fn weapon_cooldown_system(
 			info!("Ready to fire!");
 		} 
 	}
+
+    for (mut weapon) in weapon.iter_mut() {
+        if weapon.current_charge >= 1. {
+            continue;
+        }
+        weapon.current_charge += weapon.charge_rate * time.delta_seconds();
+    }
+
+
 }
 
-fn try_fire_emp(
+fn try_fire_emp_listener(
     mut ev_weapon_fired: EventReader<FireWeaponEvent>,
-    commands: &mut Commands,
-    mut weapon_state: Query<(&mut Weapon)>,
+    mut commands: Commands,
+    mut weapon_query: Query<(&Parent, &mut Weapon)>,
     mut ship_query: Query<(&mut Ship, &Allegiance, &Transform)>
 ) {
 
     for fire_event in ev_weapon_fired.read() {
 
+        // Filter out non-EMP weapons
         if fire_event.weapon_type != WeaponType::EMP {
             continue;
         }
 
-        if  let Ok(mut fired_weapon) = weapon_state.get_mut(fire_event.firing_entity) {
+        // Iterate through weapons to find the one that fired
+        for (parent, mut fired_weapon) in weapon_query.iter_mut() {
+
+            info!("Parent: {:?}, Firing Entity: {:?}", parent.get(), fire_event.firing_entity);
+            if parent.get() != fire_event.firing_entity {
+                continue;
+            }
+
+            info!("Current charge: {}", fired_weapon.current_charge);
+
             if fired_weapon.current_charge < 1. {
                 continue;
             }
@@ -82,17 +105,27 @@ fn try_fire_emp(
             let mut firing_xy: Option<(f32,f32)> = None;
             let mut firing_ship_allegiance: Option<Allegiance> = None;
 
+            for (ship, allegiance, tf) in ship_query.iter_mut() {
+                info!("Ship: {:?}", allegiance);
+            }
+
             if let Ok((firing_ship, fsa, firing_ship_tf)) = ship_query.get_mut(fire_event.firing_entity) {
                 fired_weapon.current_charge = 0.;
                 firing_xy = Some((firing_ship_tf.translation.x, firing_ship_tf.translation.y));
                 firing_ship_allegiance = Some(fsa.clone());
 
+                info!("Firing ship: {:?}", fired_weapon.current_charge);
+
+            } else {
+                continue;
             }
+
+            info!("Firing EMP");
 
             if let (Some((x, y)), Some(fsa)) = (firing_xy, firing_ship_allegiance) {
                 // deal damage to enemy ships inversely proportional to distance
-                for (mut ship, ship_alignment, ship_tf) in ship_query.iter_mut() {
-                    if *ship_alignment == fsa {
+                for (mut ship, ship_allegiance, ship_tf) in ship_query.iter_mut() {
+                    if *ship_allegiance == fsa {
                         continue;
                     }
 
@@ -102,13 +135,17 @@ fn try_fire_emp(
                     let damage = 100. / distance;
 
                     ship.shields -= damage;
+
+                    info!(ship.shields);
                 }
                 
             }
+        }
+            
 
 
             
-        }
+        // }
 
 
         // if weapon_state. < 1. {
@@ -231,7 +268,7 @@ fn enemy_laser_hit_player_system(
 			// perform the collision
 			if collision.is_some() {
 				// remove the player
-				commands.entity(player_entity).despawn();
+				commands.entity(player_entity).despawn_recursive();
 				player_state.shot(time.elapsed_seconds_f64());
 				player_state.score = 0;
 
@@ -253,6 +290,50 @@ fn enemy_laser_hit_player_system(
 		}
 	}
 }
+
+
+//system to manage destroyed enemy and player ships
+fn ship_destroyed_system(
+    mut commands: Commands,
+    mut player_state: ResMut<PlayerState>,
+    mut enemy_count: ResMut<EnemyCount>,
+    time: Res<Time>,
+    mut ship_query: Query<(Entity, &mut Ship, &Allegiance, &Transform, Option<&Player>)>,
+) {
+
+    let mut despawned_entities: HashSet<Entity> = HashSet::new();
+
+    for (ship_entity, mut ship, allegiance, ship_tf, player) in ship_query.iter_mut() {
+       
+       if despawned_entities.contains(&ship_entity) {
+            continue;
+		}
+
+        if ship.shields <= 0. {
+            commands.entity(ship_entity).despawn_recursive();
+            despawned_entities.insert(ship_entity);
+      
+            commands.spawn((ExplosionToSpawn {
+                transform: Transform {
+                    translation: ship_tf.translation,
+                    ..Default::default()
+                },
+                duration: 0.05,
+                is_engine: false
+            },));
+
+            if let Some(player) = player {
+                player_state.shot(time.elapsed_seconds_f64());
+				player_state.score = 0;
+                
+            } else {
+                enemy_count.0 -= 1;
+                player_state.score += 1;
+            }
+        }
+    }
+}
+
 
 fn explosion_to_spawn_system(
 	mut commands: Commands,

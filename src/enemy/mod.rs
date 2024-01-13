@@ -1,5 +1,6 @@
 use self::formation::{Formation, FormationMaker};
-use crate::components::{Enemy, FromEnemy, Laser, Movable, SpriteSize, Velocity, Player};
+use crate::combat::Allegiance;
+use crate::components::{Enemy, FromEnemy, Laser, Movable, SpriteSize, Velocity, Player, Ship};
 use crate::{
 	EnemyCount, GameTextures, WinSize, ENEMY_LASER_SIZE, ENEMY_MAX, ENEMY_SIZE, SPRITE_SCALE,
 };
@@ -49,14 +50,20 @@ fn enemy_spawn_system(
 			.insert(Movable { auto_despawn: false })
 			.insert(Velocity { x: 1., y: 0., omega: 0.})
 			.insert(formation)
-			.insert(SpriteSize::from(ENEMY_SIZE));
+			.insert(SpriteSize::from(ENEMY_SIZE))
+			.insert(FromEnemy)
+			.insert(Allegiance::Enemy)
+			.insert(Ship {
+				max_shields: 1.,
+				shields: 1.,
+			});
 
 		enemy_count.0 += 1;
 	}
 }
 
 fn enemy_fire_criteria() -> bool {
-	thread_rng().gen_bool(1. / 200.)
+	thread_rng().gen_bool(1. / 200000.)
 }
 
 fn enemy_fire_system(

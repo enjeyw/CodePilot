@@ -76,6 +76,7 @@ pub struct Weapon {
 	pub charge_rate: f32,
 }
 
+#[derive(Component)]
 pub struct EMP;
 
 // endregion: --- Weapon Components

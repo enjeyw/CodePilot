@@ -153,7 +153,7 @@ fn main() {
 		.init_resource::<UiState>()
 		.init_resource::<CodePilotCode>()
 		.add_plugins(FrameTimeDiagnosticsPlugin::default())
-		.add_plugins(LogDiagnosticsPlugin::default())
+		// .add_plugins(LogDiagnosticsPlugin::default())
 		.add_plugins(DefaultPlugins.set(WindowPlugin {
 			primary_window: Some(Window {
 				title: "Codepilot".into(),
@@ -182,6 +182,7 @@ fn setup_system(
 
 	let mut bloom_settings = BloomSettings::NATURAL;
 	bloom_settings.intensity = 0.15;
+	bloom_settings.high_pass_frequency = 0.6;
 
 	// camera
 	let camera_id: Entity = commands.spawn(

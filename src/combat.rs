@@ -10,8 +10,7 @@ impl Plugin for CombatPlugin {
         app
         .add_event::<FireWeaponEvent>()
         .add_systems(Update, weapon_cooldown_system)
-        .add_systems(Update, player_laser_hit_enemy_system)
-        .add_systems(Update, enemy_laser_hit_player_system)
+        .add_systems(Update, laser_hit_system)
         .add_systems(Update, explosion_to_spawn_system)
         .add_systems(Update, explosion_animation_system)
         .add_systems(Update, try_fire_emp_listener)
@@ -141,156 +140,70 @@ fn try_fire_emp_listener(
                 
             }
         }
-            
-
-
-            
-        // }
-
-
-        // if weapon_state. < 1. {
-        //     continue;
-        // }
-    
-        // let (x, y) = (player_tf.translation.x, player_tf.translation.y);
-    
-        // commands
-        //     .spawn(SpriteBundle {
-        //         texture: game_textures.player_laser.clone(),
-        //         sprite: Sprite {
-        //             color: Color::rgb(5.0, 5.0, 5.0),
-        //             ..Default::default()
-        //         },
-        //         transform: Transform {
-        //             translation: Vec3::new(x + x_offset, y, 0.),
-        //             scale: Vec3::new(SPRITE_SCALE, SPRITE_SCALE, 1.),
-        //             rotation: player_tf.rotation
-        //         },
-        //         ..Default::default()
-        //     })
-        //     .insert(Laser)
-        //     .insert(FromPlayer)
-        //     .insert(SpriteSize::from(PLAYER_LASER_SIZE))
-        //     .insert(Movable { auto_despawn: true })
-        //     .insert(Velocity { x: velocity.x, y: velocity.y, omega: 0.});
-        
-    
-    
-        // player_state.weapon_cooldown = player_state.weapon_cooldown_max;
-    
-
     }
 
 	
 }
 
 #[allow(clippy::type_complexity)] // for the Query types.
-fn player_laser_hit_enemy_system(
+fn laser_hit_system(
 	mut commands: Commands,
 	mut enemy_count: ResMut<EnemyCount>,
 	mut player_state: ResMut<PlayerState>,
-	laser_query: Query<(Entity, &Transform, &SpriteSize), (With<Laser>, With<FromPlayer>)>,
-	enemy_query: Query<(Entity, &Transform, &SpriteSize), With<Enemy>>,
+	laser_query: Query<(Entity, &Allegiance, &Transform, &SpriteSize), (With<Laser>)>,
+	mut ship_query: Query<(Entity, &mut Ship, &Allegiance, &Transform, &SpriteSize)>
 ) {
 	let mut despawned_entities: HashSet<Entity> = HashSet::new();
 
 	// iterate through the lasers
-	for (laser_entity, laser_tf, laser_size) in laser_query.iter() {
+	for (laser_entity, laser_allegiance, laser_tf, laser_size) in laser_query.iter() {
 		if despawned_entities.contains(&laser_entity) {
 			continue;
 		}
 
 		let laser_scale = laser_tf.scale.xy();
 
-		// iterate through the enemies
-		for (enemy_entity, enemy_tf, enemy_size) in enemy_query.iter() {
-			if despawned_entities.contains(&enemy_entity)
+		// iterate through ships
+		for (ship_entity, mut ship, ship_allegiance, ship_tf, ship_size) in ship_query.iter_mut() {
+
+            if despawned_entities.contains(&ship_entity)
 				|| despawned_entities.contains(&laser_entity)
 			{
 				continue;
 			}
 
-			let enemy_scale = enemy_tf.scale.xy();
+            if ship_allegiance == laser_allegiance {
+                continue;
+            }
+
+			let ship_scale = ship_tf.scale.xy();
 
 			// determine if collision
 			let collision = collide(
 				laser_tf.translation,
 				laser_size.0 * laser_scale,
-				enemy_tf.translation,
-				enemy_size.0 * enemy_scale,
+				ship_tf.translation,
+				ship_size.0 * ship_scale,
 			);
+
+            if collision.is_some() {
+                info!("Collision: {:?}", collision);
+            }
+            
 
 			// perform collision
 			if collision.is_some() {
-				// remove the enemy
-				commands.entity(enemy_entity).despawn();
-				despawned_entities.insert(enemy_entity);
-				enemy_count.0 -= 1;
-				player_state.score += 1;
-
-				commands.spawn((ExplosionToSpawn {
-					transform: Transform {
-						translation: enemy_tf.translation,
-						..Default::default()
-					},
-					duration: 0.05,
-					is_engine: false
-				},));
-			}
-		}
-	}
-}
-
-
-
-#[allow(clippy::type_complexity)] // for the Query types.
-fn enemy_laser_hit_player_system(
-	mut commands: Commands,
-	mut player_state: ResMut<PlayerState>,
-	time: Res<Time>,
-	laser_query: Query<(Entity, &Transform, &SpriteSize), (With<Laser>, With<FromEnemy>)>,
-	player_query: Query<(Entity, &Transform, &SpriteSize), With<Player>>,
-) {
-	if let Ok((player_entity, player_tf, player_size)) = player_query.get_single() {
-		let player_scale = player_tf.scale.xy();
-
-		for (laser_entity, laser_tf, laser_size) in laser_query.iter() {
-			let laser_scale = laser_tf.scale.xy();
-
-			// determine if collision
-			let collision = collide(
-				laser_tf.translation,
-				laser_size.0 * laser_scale,
-				player_tf.translation,
-				player_size.0 * player_scale,
-			);
-
-			// perform the collision
-			if collision.is_some() {
-				// remove the player
-				commands.entity(player_entity).despawn_recursive();
-				player_state.shot(time.elapsed_seconds_f64());
-				player_state.score = 0;
-
 				// remove the laser
 				commands.entity(laser_entity).despawn();
 
-				// spawn the explosionToSpawn
-				commands.spawn((ExplosionToSpawn {
-					transform: Transform {
-						translation: player_tf.translation,
-						..Default::default()
-					},
-					duration: 0.05,
-					is_engine: false
-				},));
+                // add damage
+				ship.shields -= 10.;
 
 				break;
 			}
 		}
 	}
 }
-
 
 //system to manage destroyed enemy and player ships
 fn ship_destroyed_system(

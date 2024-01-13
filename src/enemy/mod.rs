@@ -63,7 +63,7 @@ fn enemy_spawn_system(
 }
 
 fn enemy_fire_criteria() -> bool {
-	thread_rng().gen_bool(1. / 200000.)
+	thread_rng().gen_bool(1. / 200.)
 }
 
 fn enemy_fire_system(
@@ -91,7 +91,7 @@ fn enemy_fire_system(
 			})
 			.insert(Laser)
 			.insert(SpriteSize::from(ENEMY_LASER_SIZE))
-			.insert(FromEnemy)
+			.insert(Allegiance::Enemy)
 			.insert(Movable { auto_despawn: true })
 			.insert(Velocity { x: velocity.x, y: velocity.y , omega: 0.});
 	}

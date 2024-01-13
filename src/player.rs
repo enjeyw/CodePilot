@@ -180,7 +180,7 @@ fn try_fire_weapon(
 				..Default::default()
 			})
 			.insert(Laser)
-			.insert(FromPlayer)
+			.insert(Allegiance::Friendly)
 			.insert(SpriteSize::from(PLAYER_LASER_SIZE))
 			.insert(Movable { auto_despawn: true })
 			.insert(Velocity { x: velocity.x, y: velocity.y, omega: 0.});

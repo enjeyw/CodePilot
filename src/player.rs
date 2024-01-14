@@ -1,4 +1,4 @@
-use crate::combat::{FireWeaponEvent, WeaponType, Allegiance};
+use crate::combat::{FireWeaponEvent, WeaponType, Allegiance, spawn_shield_sprite};
 use crate::components::{FromPlayer, Laser, Movable, Player, SpriteSize, Velocity, ExplosionToSpawn, Enemy, Weapon, Ship, EMP};
 use crate::{
 	GameTextures, PlayerState, WinSize, PLAYER_LASER_SIZE, PLAYER_RESPAWN_DELAY, PLAYER_SIZE,
@@ -72,9 +72,13 @@ fn player_spawn_system(
 			.insert(Velocity { x: 0., y: 0., omega: 0.})
 			.insert(Ship {
 				max_shields: 1.,
-				shields: 1.,
+				current_shields: 1.0,
+				sheild_carge_rate: 0.1,
 			})
-			.insert(Allegiance::Friendly);
+			.insert(Allegiance::Friendly)
+			.with_children(|parent| {
+				spawn_shield_sprite(parent, game_textures);
+			});
 
 			// .spawn(
 			// 	(SpatialBundle {

@@ -1,5 +1,5 @@
 use self::formation::{Formation, FormationMaker};
-use crate::combat::Allegiance;
+use crate::combat::{Allegiance, spawn_shield_sprite};
 use crate::components::{Enemy, FromEnemy, Laser, Movable, SpriteSize, Velocity, Player, Ship};
 use crate::{
 	EnemyCount, GameTextures, WinSize, ENEMY_LASER_SIZE, ENEMY_MAX, ENEMY_SIZE, SPRITE_SCALE,
@@ -55,7 +55,11 @@ fn enemy_spawn_system(
 			.insert(Allegiance::Enemy)
 			.insert(Ship {
 				max_shields: 1.,
-				shields: 1.,
+				current_shields: 1.,
+				sheild_carge_rate: 0.1,
+			})
+			.with_children(|parent| {
+				spawn_shield_sprite(parent, game_textures);
 			});
 
 		enemy_count.0 += 1;

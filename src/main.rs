@@ -36,9 +36,11 @@ mod combat;
 
 // region:    --- Asset Constants
 
+const SHIELD_SPRITE: &str = "shield2.png";
 const STAR_SPRITE: &str = "star2.png"; 
 const TEST_SPRITE: &str = "test2.png"; 
 
+const EMP_SPRITE: &str = "shield2.png";
 
 const PLAYER_SPRITE: &str = "lighter_nose.png";
 const PLAYER_SIZE: (f32, f32) = (144., 75.);
@@ -82,6 +84,8 @@ pub struct WinSize {
 #[derive(Resource)]
 struct GameTextures {
 	star: Handle<Image>,
+	emp: Handle<Image>,
+	shield: Handle<Image>,
 	player: Handle<Image>,
 	player_laser: Handle<Image>,
 	enemy: Handle<Image>,
@@ -109,6 +113,10 @@ impl Default for CodePilotCode {
 
 #[derive(Resource)]
 struct EnemyCount(u32);
+
+#[derive(Resource)]
+struct CollidedEntities(HashSet<(Entity,Entity)>);
+
 
 #[derive(Resource)]
 struct PlayerState {
@@ -234,6 +242,8 @@ fn setup_system(
 	// add GameTextures resource
 	let game_textures = GameTextures {
 		star: asset_server.load(STAR_SPRITE),
+		shield: asset_server.load(SHIELD_SPRITE),
+		emp: asset_server.load(EMP_SPRITE),
 		player: asset_server.load(PLAYER_SPRITE),
 		player_laser: asset_server.load(PLAYER_LASER_SPRITE),
 		enemy: asset_server.load(ENEMY_SPRITE),
@@ -243,6 +253,7 @@ fn setup_system(
 	};
 	commands.insert_resource(game_textures);
 	commands.insert_resource(EnemyCount(0));
+	commands.insert_resource(CollidedEntities(HashSet::new()));
 
 	commands.spawn(SpriteBundle {
 			texture: asset_server.load(TEST_SPRITE),

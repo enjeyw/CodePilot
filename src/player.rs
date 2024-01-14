@@ -1,4 +1,5 @@
-use crate::components::{FromPlayer, Laser, Movable, Player, SpriteSize, Velocity, ExplosionToSpawn, Enemy};
+use crate::combat::{FireWeaponEvent, WeaponType, Allegiance, spawn_shield_sprite};
+use crate::components::{FromPlayer, Laser, Movable, Player, SpriteSize, Velocity, ExplosionToSpawn, Enemy, Weapon, Ship, EMP};
 use crate::{
 	GameTextures, PlayerState, WinSize, PLAYER_LASER_SIZE, PLAYER_RESPAWN_DELAY, PLAYER_SIZE,
 	SPRITE_SCALE, UiState, CodePilotCode, enemy
@@ -26,9 +27,11 @@ impl Plugin for PlayerPlugin {
 				Update,
 				player_spawn_system.run_if(on_timer(Duration::from_secs_f32(0.5))),
 			)
+			.add_systems(Update, player_upgrade_system)
 			.add_systems(Update, player_keyboard_event_system)
 			.add_systems(Update, player_codepilot_system)
 			.add_systems(Update, player_fire_system);
+		
 	}
 }
 
@@ -66,7 +69,16 @@ fn player_spawn_system(
 			.insert(Player)
 			.insert(SpriteSize::from(PLAYER_SIZE))
 			.insert(Movable { auto_despawn: false })
-			.insert(Velocity { x: 0., y: 0., omega: 0.});
+			.insert(Velocity { x: 0., y: 0., omega: 0.})
+			.insert(Ship {
+				max_shields: 1.,
+				current_shields: 1.0,
+				sheild_carge_rate: 0.1,
+			})
+			.insert(Allegiance::Friendly)
+			.with_children(|parent| {
+				spawn_shield_sprite(parent, game_textures);
+			});
 
 			// .spawn(
 			// 	(SpatialBundle {
@@ -110,6 +122,35 @@ fn player_spawn_system(
 	}
 }
 
+fn player_upgrade_system(
+	mut commands: Commands,
+	mut player_state: ResMut<PlayerState>,
+	mut player_query: Query<Entity, With<Player>>,
+	emp_query: Query<Entity, With<EMP>>,
+) {
+
+	if emp_query.iter().count() > 0 {
+		return;
+	}
+
+	if player_state.score >= 0 {
+		
+		info!("EMP SPAWNED");
+
+		if let Ok(player) = player_query.get_single_mut() {
+			let child = commands.spawn(Weapon {
+				current_charge: 0.,
+				charge_rate: 0.5,
+			})
+			.insert(EMP)
+			.id();
+
+			commands.entity(player).push_children(&[child]);
+		}
+
+	}
+}
+
 fn try_fire_weapon(
 	commands: &mut Commands,
 	game_textures: &Res<GameTextures>,
@@ -143,7 +184,7 @@ fn try_fire_weapon(
 				..Default::default()
 			})
 			.insert(Laser)
-			.insert(FromPlayer)
+			.insert(Allegiance::Friendly)
 			.insert(SpriteSize::from(PLAYER_LASER_SIZE))
 			.insert(Movable { auto_despawn: true })
 			.insert(Velocity { x: velocity.x, y: velocity.y, omega: 0.});
@@ -297,13 +338,27 @@ fn player_fire_system(
 	mut commands: Commands,
 	kb: Res<Input<KeyCode>>,
 	game_textures: Res<GameTextures>,
+	mut fire_weapon_event: EventWriter<FireWeaponEvent>,
 	mut player_state: ResMut<PlayerState>,
-	query: Query<&Transform, With<Player>>,
+	query: Query<(Entity, &Transform), With<Player>>,
 ) {
-	if let Ok(player_tf) = query.get_single() {
+	if let Ok((player_ent, player_tf)) = query.get_single() {
 		if kb.just_pressed(KeyCode::Space) {
 			try_fire_weapon(&mut commands, &game_textures, &mut player_state, player_tf);
 		}
+
+		if kb.just_pressed(KeyCode::M) {
+			info!("Sending fire EMP event");
+			fire_weapon_event.send({
+				FireWeaponEvent {
+					weapon_type: WeaponType::EMP,
+					weapon_alignment: Allegiance::Friendly,
+					firing_entity: player_ent
+				}
+			});
+		}
+
+
 	}
 }
 
@@ -449,6 +504,7 @@ fn player_keyboard_event_system(
 				let fire = scope.globals.get_item("fire", vm);
 
 				if try_boolean_python_action("fire", &scope, vm) {
+
 					try_fire_weapon(&mut commands, &game_textures, &mut player_state, transform);
 				}
 

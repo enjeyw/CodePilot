@@ -21,9 +21,6 @@ pub struct Movable {
 }
 
 #[derive(Component)]
-pub struct Laser;
-
-#[derive(Component)]
 pub struct SpriteSize(pub Vec2);
 
 impl From<(f32, f32)> for SpriteSize {
@@ -33,6 +30,29 @@ impl From<(f32, f32)> for SpriteSize {
 }
 
 // endregion: --- Common Components
+
+// region:    --- Map Components
+
+#[derive(Component)]
+pub struct Tile {
+	pub x: i32,
+	pub y: i32
+}
+
+#[derive(Component)]
+pub struct Star;
+
+// endrefion: --- Map Components
+
+#[derive(Component)]
+pub struct Ship {
+	pub max_shields: f32,
+	pub current_shields: f32,
+	pub sheild_carge_rate: f32
+}
+
+#[derive(Component)]
+pub struct Shield;
 
 // region:    --- Player Components
 #[derive(Component)]
@@ -49,6 +69,38 @@ pub struct Enemy;
 #[derive(Component)]
 pub struct FromEnemy;
 // endregion: --- Enemy Components
+
+// region:	--- Weapon Components
+#[derive(Component)]
+pub struct Weapon {
+	pub current_charge: f32,
+	pub charge_rate: f32,
+}
+
+
+#[derive(Component)]
+pub struct Laser;
+
+#[derive(Component)]
+pub struct EMP;
+
+#[derive(Component)]
+pub struct EMPAnimator{
+	pub timer: Timer,
+	pub index: usize
+}
+
+impl EMPAnimator {
+	pub fn new(duration: f32) -> Self {
+		Self {
+			timer: Timer::from_seconds(duration, TimerMode::Repeating),
+			index: 0
+		}
+	}
+}
+
+
+// endregion: --- Weapon Components
 
 // region:    --- Explosion Components
 #[derive(Component)]

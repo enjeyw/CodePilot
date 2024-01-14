@@ -1,5 +1,6 @@
 use self::formation::{Formation, FormationMaker};
-use crate::components::{Enemy, FromEnemy, Laser, Movable, SpriteSize, Velocity, Player};
+use crate::combat::{Allegiance, spawn_shield_sprite};
+use crate::components::{Enemy, FromEnemy, Laser, Movable, SpriteSize, Velocity, Player, Ship};
 use crate::{
 	EnemyCount, GameTextures, WinSize, ENEMY_LASER_SIZE, ENEMY_MAX, ENEMY_SIZE, SPRITE_SCALE,
 };
@@ -49,14 +50,24 @@ fn enemy_spawn_system(
 			.insert(Movable { auto_despawn: false })
 			.insert(Velocity { x: 1., y: 0., omega: 0.})
 			.insert(formation)
-			.insert(SpriteSize::from(ENEMY_SIZE));
+			.insert(SpriteSize::from(ENEMY_SIZE))
+			.insert(FromEnemy)
+			.insert(Allegiance::Enemy)
+			.insert(Ship {
+				max_shields: 1.,
+				current_shields: 1.,
+				sheild_carge_rate: 0.1,
+			})
+			.with_children(|parent| {
+				spawn_shield_sprite(parent, game_textures);
+			});
 
 		enemy_count.0 += 1;
 	}
 }
 
 fn enemy_fire_criteria() -> bool {
-	thread_rng().gen_bool(1. / 300.)
+	thread_rng().gen_bool(1. / 200.)
 }
 
 fn enemy_fire_system(
@@ -65,7 +76,7 @@ fn enemy_fire_system(
 	enemy_query: Query<&Transform, With<Enemy>>,
 ) {
 	for &tf in enemy_query.iter() {
-		let velocity = tf.rotation * Vec3::X * 3.0;
+		let velocity = tf.rotation * Vec3::X * 2.0;
 		let (x, y) = (tf.translation.x, tf.translation.y);
 		// spawn enemy laser sprite
 		commands
@@ -84,7 +95,7 @@ fn enemy_fire_system(
 			})
 			.insert(Laser)
 			.insert(SpriteSize::from(ENEMY_LASER_SIZE))
-			.insert(FromEnemy)
+			.insert(Allegiance::Enemy)
 			.insert(Movable { auto_despawn: true })
 			.insert(Velocity { x: velocity.x, y: velocity.y , omega: 0.});
 	}

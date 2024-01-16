@@ -1,6 +1,8 @@
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 
+use egui_extras::syntax_highlighting::highlight;
+
 use crate::{PlayerState, CodePilotCode, components::{CodePilotActiveText, ScoreText, WeaponChargeBar}, UiState};
 
 pub struct UIPlugin;
@@ -99,19 +101,51 @@ fn ui_setup_system (
 	});
 }
 
+
 fn egui_system(
 	mut ui_state: ResMut<UiState>,
 	mut contexts: EguiContexts) {
 	let ctx = contexts.ctx_mut();
 
+    // Load these once at the start of your program
+    
+    let mut code: String = String::new();
+
+    // let mut code = r#"
+    // def foo():
+    //     print("Hello world!")
+    //                     "#;
+
+
+
+
     egui::SidePanel::right("right_panel")
-	.min_width(300.0)
-	.show(ctx, |ui| {
-        ui.vertical(|ui| {
-			ui.label("Add Codepilot Code: ");
-			ui.code_editor(&mut ui_state.player_code);
-		});
-    });
+    	.min_width(300.0)
+    	.show(ctx, |ui| {
+            ui.vertical(|ui| {
+    			ui.label("Add Codepilot Code: ");
+
+                let language = "py";
+                let theme = egui_extras::syntax_highlighting::CodeTheme::from_memory(ui.ctx());
+
+                let mut layouter = |ui: &egui::Ui, string: &str, _wrap_width: f32| {
+                    let layout_job = highlight(ui.ctx(), &theme, string, language);
+                    // layout_job.wrap.max_width = wrap_width; // no wrapping
+                    ui.fonts(|f| f.layout_job(layout_job))
+                };
+            
+                ui.add(
+                    egui::TextEdit::multiline(&mut ui_state.player_code)
+                        .font(egui::TextStyle::Monospace) // for cursor height
+                        .code_editor()
+                        .desired_rows(10)
+                        .lock_focus(true)
+                        .layouter(&mut layouter),
+                );
+         
+
+    		});
+        });
 }
 
 fn spawn_bar(parent: &mut ChildBuilder, asset_server: Res<AssetServer>) {

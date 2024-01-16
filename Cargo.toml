@@ -8,6 +8,7 @@ license = "MIT OR Apache-2.0"
 rand = "0.8.5"
 bevy_egui = "0.24.0"
 rustpython-vm = "0.3.0"
+syntect = "5.0"
 
 [dependencies.bevy]
 version = "0.12.1"
@@ -32,6 +33,12 @@ version = "0.3.0"
 default-features = false
 features = [
     "threading"
+]
+
+[dependencies.egui_extras]
+version = "0.24.2"
+features = [
+    "syntect"
 ]
 
 

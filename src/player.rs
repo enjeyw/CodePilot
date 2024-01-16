@@ -7,13 +7,6 @@ use crate::{
 use bevy::sprite::MaterialMesh2dBundle;
 use bevy::{prelude::*, ui};
 use bevy::time::common_conditions::on_timer;
-use rustpython_vm as vm;
-use vm::PyObjectRef;
-use vm::builtins::PyList;
-use rustpython::vm::{
-    pyclass, pymodule, PyObject, PyPayload, PyResult, TryFromBorrowedObject, VirtualMachine, stdlib
-};
-use vm::convert::ToPyObject;
 use std::f32::consts::PI;
 use std::fmt::Result;
 use std::time::Duration;
@@ -29,7 +22,6 @@ impl Plugin for PlayerPlugin {
 			)
 			.add_systems(Update, player_upgrade_system)
 			.add_systems(Update, player_keyboard_event_system)
-			.add_systems(Update, player_codepilot_system)
 			.add_systems(Update, player_fire_system);
 		
 	}
@@ -151,7 +143,7 @@ fn player_upgrade_system(
 	}
 }
 
-fn try_fire_weapon(
+pub fn try_fire_weapon(
 	commands: &mut Commands,
 	game_textures: &Res<GameTextures>,
 	player_state: &mut ResMut<PlayerState>,
@@ -197,7 +189,7 @@ fn try_fire_weapon(
 	return true;
 }
 
-fn accelerate_forward(
+pub fn accelerate_forward(
 	velocity: &mut Velocity,
 	transform: &Transform,
 	acceleration: f32,
@@ -244,7 +236,7 @@ fn accelerate_forward(
 	},));
 }
 
-fn accelerate_backward(
+pub fn accelerate_backward(
 	velocity: &mut Velocity,
 	transform: &Transform,
 	acceleration: f32,
@@ -280,7 +272,7 @@ fn accelerate_backward(
 	},));
 }
 
-fn accelerate_counterclockwise(
+pub fn accelerate_counterclockwise(
 	velocity: &mut Velocity,
 	transform: &Transform,
 	ang_acceleration: f32,
@@ -307,7 +299,7 @@ fn accelerate_counterclockwise(
 	},));
 }
 
-fn accelerate_clockwise (
+pub fn accelerate_clockwise (
 	velocity: &mut Velocity,
 	transform: &Transform,
 	ang_acceleration: f32,
@@ -362,67 +354,6 @@ fn player_fire_system(
 	}
 }
 
-fn player_codepilot_system(
-	mut commands: Commands,
-	kb: Res<Input<KeyCode>>,
-	ui_state: Res<UiState>,	
-	mut codepilot_code: ResMut<CodePilotCode>,
-) {
-
-	if kb.just_pressed(KeyCode::Return) {
-
-		let mut settings = vm::Settings::default();
-		settings.path_list.push("Lib".to_owned());
-		let interp = vm::Interpreter::with_init(settings, |vm| {
-			vm.add_native_modules(stdlib::get_module_inits());
-		});
-
-		let code_obj = interp.enter(|vm| {
-			let scope: vm::scope::Scope = vm.new_scope_with_builtins();
-			let source = ui_state.player_code.as_str();
-			
-			let code_obj_res = vm
-				.compile(source, vm::compiler::Mode::Exec, "<embedded>".to_owned())
-				.map_err(|err| vm.new_syntax_error(&err, Some(source)));
-
-			if let Ok(code_obj) = code_obj_res {
-				info!("Compiled Result");
-				codepilot_code.compiled = Some(code_obj);
-			}
-		});
-	}
-}
-
-#[derive(Debug, Clone)]
-struct PyAccessibleV3Vec(Vec<Vec3>);
-impl ToPyObject for PyAccessibleV3Vec {
-	fn to_pyobject(self, vm: &VirtualMachine) -> PyObjectRef {
-		let list: Vec<PyObjectRef>= self.0.into_iter().map(
-			|e| {
-				vm.new_pyobj((e.x, e.y, e.z))
-			} 
-		).collect();
-		PyList::new_ref(list, vm.as_ref()).to_pyobject(vm)
-	}
-}
-
-fn try_boolean_python_action (key: &str, scope: &vm::scope::Scope, vm: &VirtualMachine) -> bool {
-	let fire = scope.globals.get_item(key, vm);
-				
-	if let Ok(fire_ref) = fire {
-		let fire_bool_res = fire_ref.is_true(vm);
-		if let Ok(fire_bool) = fire_bool_res {
-			info!("fire: {}", fire_bool);
-
-			if fire_bool {
-				return true;
-			}
-		}
-	}
-
-	return false;
-}
-
 fn player_keyboard_event_system(
 	mut commands: Commands,
 	kb: Res<Input<KeyCode>>,
@@ -436,7 +367,7 @@ fn player_keyboard_event_system(
 	let acceleration = 0.05;
 	let ang_acceleration = 0.005;
 
-	let max_speed = 2.0;
+	let max_speed = 1.6;
 	let max_ang_velocity = 0.5;
 	
 
@@ -451,86 +382,6 @@ fn player_keyboard_event_system(
 		if speed > max_speed {
 			velocity.x = course.cos() * max_speed;
 			velocity.y = course.sin() * max_speed;
-		}
-
-		// Convert all enemy velocity and positions to lists
-		let enemy_velocities: PyAccessibleV3Vec = PyAccessibleV3Vec(
-			enemy_query.iter().map(|(vel, _)| Vec3::new(vel.x, vel.y, vel.omega)).collect()
-		);
-
-		let enemy_positions: PyAccessibleV3Vec = PyAccessibleV3Vec(
-			enemy_query.iter().map(|(_, transform)| {
-				//get the enemy heading as f32 radians
-				let enemy_heading = transform.rotation.mul_vec3(Vec3::X).y.atan2(transform.rotation.mul_vec3(Vec3::X).x);
-
-				Vec3::new(transform.translation.x, transform.translation.y, enemy_heading)
-			}).collect()
-		);
-
-		// Codepilot player control section
-		if let Some(cpc) = codepilot_code.compiled.clone() {
-			
-			vm::Interpreter::without_stdlib(Default::default()).enter(|vm | {
-				let scope = vm.new_scope_with_builtins();
-
-				// Player heading as 2d vector
-				let heading = transform.rotation * Vec3::X;
-
-				// Set the player position
-				scope
-					.globals
-					.set_item("player_position", vm.new_pyobj((
-						transform.translation.x,
-						transform.translation.y,
-						heading[0],
-						heading[1],
-					)), vm);
-				
-				// Set the player velocity
-				scope
-					.globals
-					.set_item("player_velocity", vm.new_pyobj((velocity.x, velocity.y, velocity.omega)), vm);
-
-				scope
-					.globals
-					.set_item("enemy_positions", vm.new_pyobj(enemy_positions), vm);
-
-				scope
-					.globals
-					.set_item("enemy_velocities", vm.new_pyobj(enemy_velocities), vm);
-				
-				vm.run_code_obj(cpc, scope.clone());
-
-				let fire = scope.globals.get_item("fire", vm);
-
-				if try_boolean_python_action("fire", &scope, vm) {
-
-					try_fire_weapon(&mut commands, &game_textures, &mut player_state, transform);
-				}
-
-				if try_boolean_python_action("counterclockwise", &scope, vm) {
-					accelerate_counterclockwise(
-						&mut velocity, transform, ang_acceleration, max_ang_velocity, heading, heading_perp, &mut commands)
-				}
-
-				if try_boolean_python_action("clockwise", &scope, vm) {
-					accelerate_clockwise(
-						&mut velocity, transform, ang_acceleration, max_ang_velocity, heading, heading_perp, &mut commands)
-				}
-
-				if try_boolean_python_action("forward", &scope, vm) {
-					accelerate_forward(
-						&mut velocity, transform, acceleration, max_speed, heading, heading_perp, &mut commands
-					)
-				}
-
-				if try_boolean_python_action("backward", &scope, vm) {
-					accelerate_backward(
-						&mut velocity, transform, acceleration, max_speed, heading, heading_perp, &mut commands
-					)
-				}
-
-			});
 		}
 
 		// Player keyboard control section

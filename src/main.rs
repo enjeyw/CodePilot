@@ -22,6 +22,7 @@ use ui::UIPlugin;
 use movement::MovementPlugin;
 use enemy::EnemyPlugin;
 use player::PlayerPlugin;
+use codepilot::CodePilotPlugin;
 use combat::CombatPlugin;
 use post_processing::{PostProcessPlugin, PostProcessSettings};
 use std::{collections::HashSet, f32::consts::PI};
@@ -32,6 +33,7 @@ mod post_processing;
 mod components;
 mod enemy;
 mod player;
+mod codepilot;
 mod combat;
 
 // region:    --- Asset Constants
@@ -155,6 +157,7 @@ impl PlayerState {
 // endregion: --- Resources
 
 fn main() {
+
 	App::new()
 		// .insert_resource(ClearColor(Color::rgb(0., 0., 0.)))
 		.insert_resource(ClearColor(Color::rgb(0.00, 0.00, 0.08)))
@@ -175,6 +178,7 @@ fn main() {
 		.add_plugins(UIPlugin)
 		.add_plugins(MovementPlugin)
 		.add_plugins(PlayerPlugin)
+		.add_plugins(CodePilotPlugin)
 		.add_plugins(EnemyPlugin)
 		.add_plugins(CombatPlugin)
 		.add_systems(Startup, setup_system)

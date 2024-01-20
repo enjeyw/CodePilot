@@ -27,6 +27,7 @@ use combat::CombatPlugin;
 use post_processing::{PostProcessPlugin, PostProcessSettings};
 use std::{collections::HashSet, f32::consts::PI};
 
+mod autocomplete;
 mod ui;
 mod movement;
 mod post_processing;
@@ -96,18 +97,15 @@ struct GameTextures {
 	engine: Handle<TextureAtlas>
 }
 
-#[derive(Default, Resource)]
-pub struct UiState {
-    player_code: String,
-}
-
 #[derive(Resource)]
 pub struct CodePilotCode {
+	raw_code: String,
     compiled: Option<PyRef<PyCode>>,
 }
 impl Default for CodePilotCode {
 	fn default() -> Self {
 		Self {
+			raw_code: String::new(),
 			compiled: None
 		}
 	}
@@ -161,7 +159,6 @@ fn main() {
 	App::new()
 		// .insert_resource(ClearColor(Color::rgb(0., 0., 0.)))
 		.insert_resource(ClearColor(Color::rgb(0.00, 0.00, 0.08)))
-		.init_resource::<UiState>()
 		.init_resource::<CodePilotCode>()
 		.add_plugins(FrameTimeDiagnosticsPlugin::default())
 		// .add_plugins(LogDiagnosticsPlugin::default())

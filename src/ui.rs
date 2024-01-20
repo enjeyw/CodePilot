@@ -3,7 +3,7 @@ use bevy_egui::{EguiContexts, egui};
 
 use egui_extras::syntax_highlighting::highlight;
 
-use crate::{PlayerState, CodePilotCode, components::{CodePilotActiveText, ScoreText, WeaponChargeBar}, UiState};
+use crate::{PlayerState, CodePilotCode, components::{CodePilotActiveText, ScoreText, WeaponChargeBar}, autocomplete};
 
 pub struct UIPlugin;
 
@@ -23,7 +23,6 @@ fn ui_setup_system (
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut contexts: EguiContexts,
-    mut ui_state: ResMut<UiState>,
 ) { 
 
     //Setup the HUD
@@ -103,24 +102,13 @@ fn ui_setup_system (
 
 
 fn egui_system(
-	mut ui_state: ResMut<UiState>,
+	mut codepilot_code: ResMut<CodePilotCode>,
 	mut contexts: EguiContexts) {
 	let ctx = contexts.ctx_mut();
 
     // Load these once at the start of your program
-    
-    let mut code: String = String::new();
-
-    // let mut code = r#"
-    // def foo():
-    //     print("Hello world!")
-    //                     "#;
-
-
-
-
     egui::SidePanel::right("right_panel")
-    	.min_width(300.0)
+    	.min_width(400.0)
     	.show(ctx, |ui| {
             ui.vertical(|ui| {
     			ui.label("Add Codepilot Code: ");
@@ -133,17 +121,40 @@ fn egui_system(
                     // layout_job.wrap.max_width = wrap_width; // no wrapping
                     ui.fonts(|f| f.layout_job(layout_job))
                 };
-            
-                ui.add(
-                    egui::TextEdit::multiline(&mut ui_state.player_code)
-                        .font(egui::TextStyle::Monospace) // for cursor height
-                        .code_editor()
-                        .desired_rows(10)
-                        .lock_focus(true)
-                        .layouter(&mut layouter),
-                );
-         
 
+                // https://github.com/emilk/egui/blob/ccbddcfe951e01c55efd0ed19f2f2ab5edfad5d9/egui_demo_lib/src/apps/demo/text_edit.rs
+
+                let prev_raw_code = codepilot_code.raw_code.clone();
+
+                let output = egui::TextEdit::multiline(&mut codepilot_code.raw_code)
+                .font(egui::TextStyle::Monospace) // for cursor height
+                .code_editor()
+                .desired_rows(10)
+                .desired_width(400.)
+                .lock_focus(true)
+                .layouter(&mut layouter)
+                .show(ui);
+
+                if prev_raw_code != codepilot_code.raw_code {
+                    if let Some(text_cursor_range) = output.cursor_range {
+                        let cindex = text_cursor_range.primary.ccursor.index;
+
+                        let head = &codepilot_code.raw_code[..cindex];
+
+                        // split the head on tabs, spaces or newlines
+                        let mut head = head.split(|c| c == '\t' || c == ' ' || c == '\n').collect::<Vec<_>>();
+
+                        if let Some(last) = head.pop() {
+                            if last != "" {
+                                dbg!(last);
+                                let completions = autocomplete::suggest_completions(last, &codepilot_code.raw_code);
+                                dbg!(completions);
+                            }
+                        }
+                        
+                    }
+                   
+                } 
     		});
         });
 }

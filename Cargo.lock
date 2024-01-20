@@ -1448,6 +1448,7 @@ dependencies = [
  "egui_extras",
  "rand 0.8.5",
  "rustpython",
+ "rustpython-parser",
  "rustpython-vm",
  "syntect",
 ]

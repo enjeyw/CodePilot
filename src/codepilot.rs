@@ -8,7 +8,27 @@ use rustpython::vm::{
 };
 use vm::convert::ToPyObject;
 
-use crate::{UiState, CodePilotCode, GameTextures, PlayerState, components::{Velocity, Player, Enemy}, player::{try_fire_weapon, accelerate_counterclockwise, accelerate_clockwise, accelerate_forward, accelerate_backward}};
+use crate::{CodePilotCode, GameTextures, PlayerState, components::{Velocity, Player, Enemy}, player::{try_fire_weapon, accelerate_counterclockwise, accelerate_clockwise, accelerate_forward, accelerate_backward}};
+
+macro_rules! add_python_function {
+    ( $scope:ident, $vm:ident, $src:literal $(,)? ) => {{
+        // compile the code to bytecode
+        let code = vm::py_compile!(source = $src);
+        // convert the rustpython_compiler_core::CodeObject to a PyRef<PyCode>
+        let code = $vm.ctx.new_code(code);
+
+        // run the python code in the scope to store the function
+        $vm.run_code_obj(code, $scope.clone())
+    }};
+}
+
+// removes the line in a string for a given index
+fn remove_line(input_sting: &str, line_index: usize) -> String {
+	let mut lines = input_sting.lines().collect::<Vec<_>>();
+	lines.remove(line_index);
+	lines.join("\n")
+}
+
 
 pub struct CodePilotPlugin;
 
@@ -36,32 +56,32 @@ impl ToPyObject for PyAccessibleV3Vec {
 fn player_codepilot_compile_system(
 	mut commands: Commands,
 	kb: Res<Input<KeyCode>>,
-	ui_state: Res<UiState>,	
 	mut codepilot_code: ResMut<CodePilotCode>,
 ) {
 
-	if kb.just_pressed(KeyCode::Return) {
+	// if kb.just_pressed(KeyCode::Return) {
 
-		let mut settings = vm::Settings::default();
-		settings.path_list.push("Lib".to_owned());
-		let interp = vm::Interpreter::with_init(settings, |vm| {
-			vm.add_native_modules(stdlib::get_module_inits());
-		});
+	// 	let mut settings = vm::Settings::default();
+	// 	settings.path_list.push("Lib".to_owned());
+	// 	let interp = vm::Interpreter::with_init(settings, |vm| {
+	// 		vm.add_native_modules(stdlib::get_module_inits());
+	// 	});
 
-		let code_obj = interp.enter(|vm| {
-			let scope: vm::scope::Scope = vm.new_scope_with_builtins();
-			let source = ui_state.player_code.as_str();
+	// 	let code_obj = interp.enter(|vm| {
+	// 		let scope: vm::scope::Scope = vm.new_scope_with_builtins();
+
+	// 		let source = codepilot_code.raw_code.as_str();
 			
-			let code_obj_res = vm
-				.compile(source, vm::compiler::Mode::Exec, "<embedded>".to_owned())
-				.map_err(|err| vm.new_syntax_error(&err, Some(source)));
+	// 		let code_obj_res = vm
+	// 			.compile(source, vm::compiler::Mode::Exec, "<embedded>".to_owned())
+	// 			.map_err(|err| vm.new_syntax_error(&err, Some(source)));
 
-			if let Ok(code_obj) = code_obj_res {
-				info!("Compiled Result");
-				codepilot_code.compiled = Some(code_obj);
-			}
-		});
-	}
+	// 		if let Ok(code_obj) = code_obj_res {
+	// 			info!("Compiled Result");
+	// 			codepilot_code.compiled = Some(code_obj);
+	// 		}
+	// 	});
+	// }
 }
 
 fn try_boolean_python_action (key: &str, scope: &vm::scope::Scope, vm: &VirtualMachine) -> bool {
@@ -84,7 +104,6 @@ fn try_boolean_python_action (key: &str, scope: &vm::scope::Scope, vm: &VirtualM
 fn codepilot_event_system(
 	mut commands: Commands,
 	kb: Res<Input<KeyCode>>,
-	ui_state: Res<UiState>,
 	codepilot_code: Res<CodePilotCode>,
 	game_textures: Res<GameTextures>,
 	mut player_state: ResMut<PlayerState>,
@@ -100,10 +119,11 @@ fn codepilot_event_system(
 
 	if let Ok((mut velocity, transform)) = query.get_single_mut() {
 
-		let heading = transform.rotation * Vec3::X;
+		let heading_vec = transform.rotation * Vec3::X;
+		let heading_angle = transform.rotation.mul_vec3(Vec3::X).y.atan2(transform.rotation.mul_vec3(Vec3::X).x);
 		let heading_perp = transform.rotation * Vec3::Y;
 		let speed = velocity.y.hypot(velocity.x);
-		let course = (velocity.y).atan2(velocity.x);
+		let course = (velocity.y).atan2(velocity.x);		
 
 		// ensure speed is not greater than max speed
 		if speed > max_speed {
@@ -131,17 +151,15 @@ fn codepilot_event_system(
 			vm::Interpreter::without_stdlib(Default::default()).enter(|vm | {
 				let scope = vm.new_scope_with_builtins();
 
-				// Player heading as 2d vector
-				let heading = transform.rotation * Vec3::X;
-
 				// Set the player position
 				scope
 					.globals
 					.set_item("player_position", vm.new_pyobj((
 						transform.translation.x,
 						transform.translation.y,
-						heading[0],
-						heading[1],
+						heading_vec[0],
+						heading_vec[1],
+						heading_angle
 					)), vm);
 				
 				// Set the player velocity
@@ -156,8 +174,21 @@ fn codepilot_event_system(
 				scope
 					.globals
 					.set_item("enemy_velocities", vm.new_pyobj(enemy_velocities), vm);
+
+				let helper_code = vm::py_compile!(file = "./src/python_helpers_5.py");
+		
+				let res = vm.run_code_obj(vm.ctx.new_code(helper_code), scope.clone());
+				match res {
+					Ok(_) => info!("Helper code ran successfully"),
+					Err(err) =>  { vm.print_exception(err) }
+				}
 				
-				vm.run_code_obj(cpc, scope.clone());
+				let res2 = vm.run_code_obj(cpc, scope.clone());
+
+				match res2 {
+					Ok(_) => info!("Codepilot code ran successfully"),
+					Err(err) =>  { vm.print_exception(err) }
+				}
 
 				let fire = scope.globals.get_item("fire", vm);
 
@@ -168,23 +199,23 @@ fn codepilot_event_system(
 
 				if try_boolean_python_action("counterclockwise", &scope, vm) {
 					accelerate_counterclockwise(
-						&mut velocity, transform, ang_acceleration, max_ang_velocity, heading, heading_perp, &mut commands)
+						&mut velocity, transform, ang_acceleration, max_ang_velocity, heading_vec, heading_perp, &mut commands)
 				}
 
 				if try_boolean_python_action("clockwise", &scope, vm) {
 					accelerate_clockwise(
-						&mut velocity, transform, ang_acceleration, max_ang_velocity, heading, heading_perp, &mut commands)
+						&mut velocity, transform, ang_acceleration, max_ang_velocity, heading_vec, heading_perp, &mut commands)
 				}
 
 				if try_boolean_python_action("forward", &scope, vm) {
 					accelerate_forward(
-						&mut velocity, transform, acceleration, max_speed, heading, heading_perp, &mut commands
+						&mut velocity, transform, acceleration, max_speed, heading_vec, heading_perp, &mut commands
 					)
 				}
 
 				if try_boolean_python_action("backward", &scope, vm) {
 					accelerate_backward(
-						&mut velocity, transform, acceleration, max_speed, heading, heading_perp, &mut commands
+						&mut velocity, transform, acceleration, max_speed, heading_vec, heading_perp, &mut commands
 					)
 				}
 

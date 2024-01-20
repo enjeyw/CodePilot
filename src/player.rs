@@ -2,7 +2,7 @@ use crate::combat::{FireWeaponEvent, WeaponType, Allegiance, spawn_shield_sprite
 use crate::components::{FromPlayer, Laser, Movable, Player, SpriteSize, Velocity, ExplosionToSpawn, Enemy, Weapon, Ship, EMP};
 use crate::{
 	GameTextures, PlayerState, WinSize, PLAYER_LASER_SIZE, PLAYER_RESPAWN_DELAY, PLAYER_SIZE,
-	SPRITE_SCALE, UiState, CodePilotCode, enemy
+	SPRITE_SCALE, CodePilotCode, enemy
 };
 use bevy::sprite::MaterialMesh2dBundle;
 use bevy::{prelude::*, ui};
@@ -125,10 +125,8 @@ fn player_upgrade_system(
 		return;
 	}
 
-	if player_state.score >= 0 {
+	if player_state.score >= 2 {
 		
-		info!("EMP SPAWNED");
-
 		if let Ok(player) = player_query.get_single_mut() {
 			let child = commands.spawn(Weapon {
 				current_charge: 0.,
@@ -357,7 +355,6 @@ fn player_fire_system(
 fn player_keyboard_event_system(
 	mut commands: Commands,
 	kb: Res<Input<KeyCode>>,
-	ui_state: Res<UiState>,
 	codepilot_code: Res<CodePilotCode>,
 	game_textures: Res<GameTextures>,
 	mut player_state: ResMut<PlayerState>,

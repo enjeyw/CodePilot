@@ -3,7 +3,7 @@ use std::f64::consts::PI;
 use bevy::{prelude::*, sprite::MaterialMesh2dBundle};
 use rand::{thread_rng, Rng};
 
-use crate::{WinSize, GameTextures, components::{CameraMarker, Player, Tile, Velocity, Movable, Star}, UiState, BASE_SPEED, BASE_ROT_SPEED};
+use crate::{WinSize, GameTextures, components::{CameraMarker, Player, Tile, Velocity, Movable, Star}, BASE_SPEED, BASE_ROT_SPEED};
 
 pub struct MovementPlugin;
 
@@ -113,7 +113,6 @@ fn movable_system(
 	mut commands: Commands,
 	time: Res<Time>,
 	win_size: Res<WinSize>,
-	ui_state: Res<UiState>,
 	mut player_query: Query<(&mut Transform, &mut Velocity, &mut Movable), (With<Player>, Without<CameraMarker>)>,
 	mut camera_query: Query<&mut Transform, (With<CameraMarker>, Without<Player>)>,
 	mut other_movable_query: Query<(Entity, &Velocity, &mut Transform, &Movable), (Without<Player>, Without<CameraMarker>)>

@@ -68,9 +68,11 @@ pub fn suggest_completions(input: &str, source: &str) -> Vec<String> {
                         let class_functions = classes.get(assignment_value);
 
                         if let Some(class_functions) = class_functions {
-                            let class_function_names = class_functions.keys().collect::<Vec<_>>();
+                            let mut class_function_names = class_functions.keys().collect::<Vec<_>>();
+                            class_function_names.sort();
+                            
                             for class_function_name in class_function_names {
-                                if class_function_name.starts_with(input_end) {
+                                if class_function_name.starts_with(input_end) && class_function_name != "__init__" {
                                     let class_function_args = class_functions.get(class_function_name).unwrap();
                                     // filter out the 'self' argument
                                     let class_function_args = class_function_args.iter().filter(|arg: &&String| **arg != "self").map(|arg| arg.to_string()).collect::<Vec<_>>();        
@@ -92,17 +94,23 @@ pub fn suggest_completions(input: &str, source: &str) -> Vec<String> {
                     let class_functions = classes.get(assignment_value);
 
                     if let Some(class_functions) = class_functions {
-                        let class_function_names = class_functions.keys().collect::<Vec<_>>();
-                        for class_function_name in class_function_names {
-                            let class_function_args = class_functions.get(class_function_name).unwrap();
-                            // filter out the 'self' argument
-                            let class_function_args = class_function_args.iter().filter(|arg: &&String| **arg != "self").map(|arg| arg.to_string()).collect::<Vec<_>>();
+                        let mut class_function_names = class_functions.keys().collect::<Vec<_>>();
+                        class_function_names.sort();
 
-                            let mut class_function_with_args = format!(".{}", class_function_name);
-                            class_function_with_args.push('(');
-                            class_function_with_args.push_str(&class_function_args.join(", "));
-                            class_function_with_args.push(')');
-                            suggestions.push(class_function_with_args);
+                        for class_function_name in class_function_names {
+                            if class_function_name != "__init__"  {
+                                let class_function_args = class_functions.get(class_function_name).unwrap();
+                                // filter out the 'self' argument
+                                let class_function_args = class_function_args.iter().filter(|arg: &&String| **arg != "self").map(|arg| arg.to_string()).collect::<Vec<_>>();
+
+                                let mut class_function_with_args = format!(".{}", class_function_name);
+                                class_function_with_args.push('(');
+                                class_function_with_args.push_str(&class_function_args.join(", "));
+                                class_function_with_args.push(')');
+                                suggestions.push(class_function_with_args);
+                                
+                            }
+                            
                         }
                     }
 
@@ -134,9 +142,11 @@ fn remove_line(input_sting: &str, index: usize, offset: usize) -> String {
     }
 
     let mut lines = input_sting.lines().collect::<Vec<_>>();
-    if offset > line_count {
+    if offset > line_count - 1 || line_count - offset >= lines.len() {
         return String::new()
     }
+
+
 	lines.remove(line_count - offset);
 	lines.join("\n")
 }
@@ -154,6 +164,7 @@ fn strip_parse(source: &str) -> Option<Mod> {
             // println!("Failed to parse: {}", err);
 
             let shortened = remove_line(source, offset.to_usize(), 0);
+
 
             if shortened.len() == 0 {
                 return None

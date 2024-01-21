@@ -101,12 +101,16 @@ struct GameTextures {
 pub struct CodePilotCode {
 	raw_code: String,
     compiled: Option<PyRef<PyCode>>,
+	completions: Vec<String>,
+	cursor_index: Option<usize>
 }
 impl Default for CodePilotCode {
 	fn default() -> Self {
 		Self {
 			raw_code: String::new(),
-			compiled: None
+			compiled: None,
+			completions: Vec::new(),
+			cursor_index: None
 		}
 	}
 }

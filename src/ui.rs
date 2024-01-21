@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use bevy_egui::{EguiContexts, egui};
+use bevy_egui::{EguiContexts, egui::{self, Pos2}};
 
 use egui_extras::syntax_highlighting::highlight;
 
@@ -110,9 +110,11 @@ fn egui_system(
     egui::SidePanel::right("right_panel")
     	.min_width(400.0)
     	.show(ctx, |ui| {
+                
             ui.vertical(|ui| {
     			ui.label("Add Codepilot Code: ");
 
+                
                 let language = "py";
                 let theme = egui_extras::syntax_highlighting::CodeTheme::from_memory(ui.ctx());
 
@@ -125,6 +127,8 @@ fn egui_system(
                 // https://github.com/emilk/egui/blob/ccbddcfe951e01c55efd0ed19f2f2ab5edfad5d9/egui_demo_lib/src/apps/demo/text_edit.rs
 
                 let prev_raw_code = codepilot_code.raw_code.clone();
+                let prev_cursor_index = codepilot_code.cursor_index.clone();
+
 
                 let output = egui::TextEdit::multiline(&mut codepilot_code.raw_code)
                 .font(egui::TextStyle::Monospace) // for cursor height
@@ -135,28 +139,60 @@ fn egui_system(
                 .layouter(&mut layouter)
                 .show(ui);
 
-                if prev_raw_code != codepilot_code.raw_code {
-                    if let Some(text_cursor_range) = output.cursor_range {
-                        let cindex = text_cursor_range.primary.ccursor.index;
 
-                        let head = &codepilot_code.raw_code[..cindex];
+                let mut loc = output.response.rect.left_top();                
+                
+                loc.x += 3.;
+
+                if let Some(text_cursor_range) = output.cursor_range {
+                    
+                    let cindex = text_cursor_range.primary.ccursor.index;
+
+                    codepilot_code.cursor_index =Some(cindex);
+
+                    let cursor_row = text_cursor_range.primary.rcursor.row;
+                    let cursor_col = text_cursor_range.primary.rcursor.column;
+                    if prev_raw_code != codepilot_code.raw_code || codepilot_code.cursor_index != prev_cursor_index {
+
+                        dbg!(prev_cursor_index);
+                        dbg!(codepilot_code.cursor_index);
 
                         // split the head on tabs, spaces or newlines
+                        let head: &str = &codepilot_code.raw_code[..cindex];
                         let mut head = head.split(|c| c == '\t' || c == ' ' || c == '\n').collect::<Vec<_>>();
+
+                        let mut head = dbg!(head.clone());
 
                         if let Some(last) = head.pop() {
                             if last != "" {
-                                dbg!(last);
                                 let completions = autocomplete::suggest_completions(last, &codepilot_code.raw_code);
-                                dbg!(completions);
+                                codepilot_code.completions = completions;
+                            } else {
+                                codepilot_code.completions = Vec::new();
                             }
                         }
-                        
-                    }
                    
-                } 
-    		});
+                    }
+
+                    loc.x += 7. * cursor_col as f32;
+                    loc.y += 14. * (cursor_row as f32 + 1.);
+                            
+                };                
+
+                if codepilot_code.completions.len() > 0 {
+                    egui::Window::new("Codepilot")
+                        .fixed_pos(loc)
+                        .title_bar(false)
+                        .show(ctx, |ui| {
+                            for completion in &codepilot_code.completions {
+                                ui.label(completion);
+                            }
+                        });
+                }
+                
+            });
         });
+
 }
 
 fn spawn_bar(parent: &mut ChildBuilder, asset_server: Res<AssetServer>) {

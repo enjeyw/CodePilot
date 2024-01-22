@@ -102,6 +102,7 @@ pub struct CodePilotCode {
 	raw_code: String,
     compiled: Option<PyRef<PyCode>>,
 	completions: Vec<String>,
+	autocomplete_token: String,
 	cursor_index: Option<usize>
 }
 impl Default for CodePilotCode {
@@ -110,6 +111,7 @@ impl Default for CodePilotCode {
 			raw_code: String::new(),
 			compiled: None,
 			completions: Vec::new(),
+			autocomplete_token: String::new(),
 			cursor_index: None
 		}
 	}

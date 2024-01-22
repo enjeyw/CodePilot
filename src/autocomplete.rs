@@ -56,12 +56,10 @@ pub fn suggest_completions(input: &str, source: &str) -> Vec<String> {
                 // split the input by the dot, if it has one
                 let split_input = input.split('.').collect::<Vec<_>>();
                 let input_start = split_input[0];
-                let input_start = dbg!(input_start);
                 if split_input.len() == 2 {
                     // if the input starts with an assignment, check if the assignment maps to a class
                     // if it does, add the class functions that match the input end the suggestions
                     let input_end = split_input[1];
-
                    
                     if assignment_name == input_start {
                         let assignment_value = assignments.get(assignment_name).unwrap();
@@ -142,10 +140,9 @@ fn remove_line(input_sting: &str, index: usize, offset: usize) -> String {
     }
 
     let mut lines = input_sting.lines().collect::<Vec<_>>();
-    if offset > line_count - 1 || line_count - offset >= lines.len() {
+    if offset > line_count || line_count - offset >= lines.len() {
         return String::new()
     }
-
 
 	lines.remove(line_count - offset);
 	lines.join("\n")
@@ -170,7 +167,7 @@ fn strip_parse(source: &str) -> Option<Mod> {
                 return None
             }
 
-            println!("Attempting to parse: {}", shortened.clone());
+            // println!("Attempting to parse: {}", shortened.clone());
 
             return strip_parse(&shortened);
         }

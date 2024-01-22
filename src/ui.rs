@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use bevy_egui::{EguiContexts, egui::{self, Pos2}};
+use bevy_egui::{EguiContexts, egui::{self, Pos2, text_edit::{CCursorRange, CursorRange}, text::CCursor, epaint::text::cursor::Cursor, TextEdit}};
 
 use egui_extras::syntax_highlighting::highlight;
 
@@ -129,8 +129,7 @@ fn egui_system(
                 let prev_raw_code = codepilot_code.raw_code.clone();
                 let prev_cursor_index = codepilot_code.cursor_index.clone();
 
-
-                let output = egui::TextEdit::multiline(&mut codepilot_code.raw_code)
+                let mut output = egui::TextEdit::multiline(&mut codepilot_code.raw_code)
                 .font(egui::TextStyle::Monospace) // for cursor height
                 .code_editor()
                 .desired_rows(10)
@@ -139,36 +138,78 @@ fn egui_system(
                 .layouter(&mut layouter)
                 .show(ui);
 
-
-                let mut loc = output.response.rect.left_top();                
+                let response = output.response;
+          
+                let mut loc = response.rect.left_top();                
                 
                 loc.x += 3.;
 
                 if let Some(text_cursor_range) = output.cursor_range {
-                    
-                    let cindex = text_cursor_range.primary.ccursor.index;
+                    let cindex: usize = text_cursor_range.primary.ccursor.index;
 
                     codepilot_code.cursor_index =Some(cindex);
 
                     let cursor_row = text_cursor_range.primary.rcursor.row;
                     let cursor_col = text_cursor_range.primary.rcursor.column;
+                    
+                    // split the head on tabs, spaces or newlines
+                    let head: &str = &codepilot_code.raw_code.clone()[..cindex];
+                    let mut head = head.split(|c| c == '\t' || c == ' ' || c == '\n').collect::<Vec<_>>();
+
+                    if codepilot_code.completions.len() > 0 {
+                        if ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::NONE, egui::Key::Tab)) { 
+                            
+                            let completion = codepilot_code.completions[0].clone();
+
+                            //we need to strip the part of the completion that is identical
+                            let mut autocomp_token_len = codepilot_code.autocomplete_token.len();
+
+                            //now handle the special case of autocompletion of a class function, where only after the dot will be filled
+                            if completion.starts_with(".") {
+                                let split_input = codepilot_code.autocomplete_token.split('.').collect::<Vec<_>>();
+                                let split_input_len = split_input.len();
+
+                                if split_input_len == 1 {
+                                    //no dot present in input token, which means we're at the end of the class assignment
+                                    autocomp_token_len = 0;
+                                } else {
+                                    autocomp_token_len = split_input[split_input_len - 1].len() + 1;
+                                }
+
+                            }
+                           
+
+                        let (first, last) = prev_raw_code.split_at(cindex - 1);
+                            let mut new_code: String = first.to_owned();
+                            let completion_to_insert = &completion.as_str()[autocomp_token_len..];
+                            new_code.push_str(completion_to_insert);
+                            new_code.push_str(last);
+
+                            codepilot_code.raw_code = new_code;
+
+                            let ccursor_adjustment = completion_to_insert.len();
+
+                            if let Some(mut state) = TextEdit::load_state(ui.ctx(), response.id) {
+                                if let Some(mut ccursor_range) = state.ccursor_range() {
+                                    ccursor_range.primary.index += ccursor_adjustment;
+                                    ccursor_range.secondary = ccursor_range.primary;
+                                    state.set_ccursor_range(Some(ccursor_range));
+                                    state.store(ui.ctx(), response.id);   
+                                }
+                            }
+    
+                        } 
+                    }
+
                     if prev_raw_code != codepilot_code.raw_code || codepilot_code.cursor_index != prev_cursor_index {
-
-                        dbg!(prev_cursor_index);
-                        dbg!(codepilot_code.cursor_index);
-
-                        // split the head on tabs, spaces or newlines
-                        let head: &str = &codepilot_code.raw_code[..cindex];
-                        let mut head = head.split(|c| c == '\t' || c == ' ' || c == '\n').collect::<Vec<_>>();
-
-                        let mut head = dbg!(head.clone());
-
                         if let Some(last) = head.pop() {
                             if last != "" {
                                 let completions = autocomplete::suggest_completions(last, &codepilot_code.raw_code);
                                 codepilot_code.completions = completions;
+                                codepilot_code.autocomplete_token = last.to_owned();
                             } else {
                                 codepilot_code.completions = Vec::new();
+                                codepilot_code.autocomplete_token = String::new();
                             }
                         }
                    
@@ -176,20 +217,18 @@ fn egui_system(
 
                     loc.x += 7. * cursor_col as f32;
                     loc.y += 14. * (cursor_row as f32 + 1.);
-                            
-                };                
 
-                if codepilot_code.completions.len() > 0 {
-                    egui::Window::new("Codepilot")
-                        .fixed_pos(loc)
-                        .title_bar(false)
-                        .show(ctx, |ui| {
-                            for completion in &codepilot_code.completions {
-                                ui.label(completion);
-                            }
-                        });
-                }
-                
+                    if codepilot_code.completions.len() > 0 {
+                        egui::Window::new("Codepilot")
+                            .fixed_pos(loc)
+                            .title_bar(false)
+                            .show(ctx, |ui| {
+                                for completion in &codepilot_code.completions {
+                                    ui.label(completion);
+                                }
+                            });
+                    }  
+                };
             });
         });
 

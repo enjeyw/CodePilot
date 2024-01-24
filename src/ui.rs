@@ -129,6 +129,22 @@ fn egui_system(
                 let prev_raw_code = codepilot_code.raw_code.clone();
                 let prev_cursor_index = codepilot_code.cursor_index.clone();
 
+                if codepilot_code.completions.len() > 0 {
+
+                    
+                    if ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown)) { 
+                        codepilot_code.selected_completion += 1;
+                    }
+
+                    if ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp)) { 
+                        codepilot_code.selected_completion -= 1;
+                    }
+
+                    codepilot_code.selected_completion = codepilot_code.selected_completion % codepilot_code.completions.len();
+
+                }
+                
+
                 let mut output = egui::TextEdit::multiline(&mut codepilot_code.raw_code)
                 .font(egui::TextStyle::Monospace) // for cursor height
                 .code_editor()
@@ -159,7 +175,7 @@ fn egui_system(
                     if codepilot_code.completions.len() > 0 {
                         if ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::NONE, egui::Key::Tab)) { 
                             
-                            let completion = codepilot_code.completions[0].clone();
+                            let completion = codepilot_code.completions[codepilot_code.selected_completion].clone();
 
                             //we need to strip the part of the completion that is identical
                             let mut autocomp_token_len = codepilot_code.autocomplete_token.len();
@@ -218,13 +234,21 @@ fn egui_system(
                     loc.x += 7. * cursor_col as f32;
                     loc.y += 14. * (cursor_row as f32 + 1.);
 
+                    #[derive(PartialEq)]
+                    enum Enum { First, Second, Third }
+
                     if codepilot_code.completions.len() > 0 {
+                        let completions = codepilot_code.completions.clone();
                         egui::Window::new("Codepilot")
                             .fixed_pos(loc)
                             .title_bar(false)
                             .show(ctx, |ui| {
-                                for completion in &codepilot_code.completions {
-                                    ui.label(completion);
+                                for (idx, completion) in completions.iter().enumerate() {
+                                    ui.selectable_value(
+                                        &mut codepilot_code.selected_completion,
+                                        idx,
+                                        completion
+                                        );
                                 }
                             });
                     }  

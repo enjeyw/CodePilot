@@ -25,7 +25,10 @@ class Ship():
     def print_velocity(self):
         print(self.velocity)
 
-    def foo(self):
+    def produce(self):
+        print("produce")
+
+    def p_foo(self):
         print("foo")
 
 s = Ship()

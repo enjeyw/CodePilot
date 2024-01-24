@@ -28,7 +28,24 @@ pub fn suggest_completions(input: &str, source: &str) -> Vec<String> {
             let class_names = classes.keys().collect::<Vec<_>>();
             for class_name in class_names {
                 if class_name.starts_with(input) {
-                    suggestions.push(class_name.to_string());
+                    // include arguments from __init__ function if it exists
+                    let class_functions = classes.get(class_name).unwrap();
+                    let init_completion = if let Some(class_function_args) = class_functions.get("__init__") {
+                        let class_function_args = class_function_args.iter().filter(|arg: &&String| **arg != "self").map(|arg| arg.to_string()).collect::<Vec<_>>();
+                        let mut class_function_with_args = String::new();
+                        class_function_with_args.push('(');
+                        class_function_with_args.push_str(&class_function_args.join(", "));
+                        class_function_with_args.push(')');
+                        Some(class_function_with_args)
+                    } else {
+                        None
+                    };
+
+                    if let Some(init_completion) = init_completion {
+                        suggestions.push(format!("{}{}", class_name, init_completion));
+                    } else {
+                        suggestions.push(format!("{}()", class_name));
+                    }
                 }
             }
 
@@ -62,7 +79,7 @@ pub fn suggest_completions(input: &str, source: &str) -> Vec<String> {
                     let input_end = split_input[1];
                    
                     if assignment_name == input_start {
-                        let assignment_value = assignments.get(assignment_name).unwrap();
+                        let assignment_value: &String = assignments.get(assignment_name).unwrap();
                         let class_functions = classes.get(assignment_value);
 
                         if let Some(class_functions) = class_functions {

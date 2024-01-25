@@ -7,6 +7,7 @@ use bevy::text::BreakLineOn;
 use bevy::{math::Vec3Swizzles, diagnostic::LogDiagnosticsPlugin};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
+use bevy_egui::egui::Id;
 use components::{
 	CameraMarker, Enemy, Explosion, ExplosionTimer, ExplosionToSpawn, FromEnemy, FromPlayer, Laser, Movable,
 	Player, SpriteSize, Velocity, ScoreText, MaxScoreText, CodePilotActiveText, WeaponChargeBar
@@ -104,7 +105,7 @@ pub struct CodePilotCode {
 	completions: Vec<String>,
 	autocomplete_token: String,
 	cursor_index: Option<usize>,
-	selected_completion: usize
+	selected_completion: usize,
 }
 impl Default for CodePilotCode {
 	fn default() -> Self {

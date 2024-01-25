@@ -129,19 +129,61 @@ fn egui_system(
                 let prev_raw_code = codepilot_code.raw_code.clone();
                 let prev_cursor_index = codepilot_code.cursor_index.clone();
 
-                if codepilot_code.completions.len() > 0 {
+                let mut ccursor_adjustment = 0;
 
+                // If we escape autocomplete, we need to regain focus on the text box
+                let mut escaped = false;
+
+                let completions_len = codepilot_code.completions.len();
+                if completions_len > 0 {
+
+                    if ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) { 
+                        escaped = true;
+                        codepilot_code.completions = Vec::new();
+                    }
                     
                     if ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown)) { 
-                        codepilot_code.selected_completion += 1;
+                        codepilot_code.selected_completion = (codepilot_code.selected_completion + 1) % completions_len;
                     }
 
                     if ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp)) { 
-                        codepilot_code.selected_completion -= 1;
+                        codepilot_code.selected_completion = (codepilot_code.selected_completion - 1) % completions_len;
                     }
 
-                    codepilot_code.selected_completion = codepilot_code.selected_completion % codepilot_code.completions.len();
-
+                    if let Some(cursor_index) = codepilot_code.cursor_index {
+                        if ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::NONE, egui::Key::Tab)) ||
+                            ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter)){ 
+                        
+                            let completion = codepilot_code.completions[codepilot_code.selected_completion].clone();
+    
+                            //we need to strip the part of the completion that is identical
+                            let mut autocomp_token_len = codepilot_code.autocomplete_token.len();
+    
+                            //now handle the special case of autocompletion of a class function, where only after the dot will be filled
+                            if completion.starts_with(".") {
+                                let split_input = codepilot_code.autocomplete_token.split('.').collect::<Vec<_>>();
+                                let split_input_len = split_input.len();
+    
+                                if split_input_len == 1 {
+                                    //no dot present in input token, which means we're at the end of the class assignment
+                                    autocomp_token_len = 0;
+                                } else {
+                                    autocomp_token_len = split_input[split_input_len - 1].len() + 1;
+                                }
+    
+                            }
+                           
+                            let (first, last) = prev_raw_code.split_at(cursor_index);
+                                let mut new_code: String = first.to_owned();
+                                let completion_to_insert = &completion.as_str()[autocomp_token_len..];
+                                new_code.push_str(completion_to_insert);
+                                new_code.push_str(last);
+    
+                                codepilot_code.raw_code = new_code;
+    
+                                ccursor_adjustment = completion_to_insert.len();
+                        } 
+                    }
                 }
                 
 
@@ -154,7 +196,13 @@ fn egui_system(
                 .layouter(&mut layouter)
                 .show(ui);
 
-                let response = output.response;
+                let mut response = output.response;
+
+                if escaped {
+                    response.request_focus();
+                }
+
+                let response_id = response.id;
           
                 let mut loc = response.rect.left_top();                
                 
@@ -167,55 +215,21 @@ fn egui_system(
 
                     let cursor_row = text_cursor_range.primary.rcursor.row;
                     let cursor_col = text_cursor_range.primary.rcursor.column;
+
+                    if let Some(mut state) = TextEdit::load_state(ui.ctx(), response_id) {
+                        if let Some(mut ccursor_range) = state.ccursor_range() {
+                            if ccursor_adjustment != 0 {
+                                ccursor_range.primary.index += ccursor_adjustment;
+                                ccursor_range.secondary = ccursor_range.primary;
+                                state.set_ccursor_range(Some(ccursor_range));
+                                state.store(ui.ctx(), response.id);   
+                            }
+                        }
+                    }
                     
                     // split the head on tabs, spaces or newlines
                     let head: &str = &codepilot_code.raw_code.clone()[..cindex];
                     let mut head = head.split(|c| c == '\t' || c == ' ' || c == '\n').collect::<Vec<_>>();
-
-                    if codepilot_code.completions.len() > 0 {
-                        if ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::NONE, egui::Key::Tab)) { 
-                            
-                            let completion = codepilot_code.completions[codepilot_code.selected_completion].clone();
-
-                            //we need to strip the part of the completion that is identical
-                            let mut autocomp_token_len = codepilot_code.autocomplete_token.len();
-
-                            //now handle the special case of autocompletion of a class function, where only after the dot will be filled
-                            if completion.starts_with(".") {
-                                let split_input = codepilot_code.autocomplete_token.split('.').collect::<Vec<_>>();
-                                let split_input_len = split_input.len();
-
-                                if split_input_len == 1 {
-                                    //no dot present in input token, which means we're at the end of the class assignment
-                                    autocomp_token_len = 0;
-                                } else {
-                                    autocomp_token_len = split_input[split_input_len - 1].len() + 1;
-                                }
-
-                            }
-                           
-
-                        let (first, last) = prev_raw_code.split_at(cindex - 1);
-                            let mut new_code: String = first.to_owned();
-                            let completion_to_insert = &completion.as_str()[autocomp_token_len..];
-                            new_code.push_str(completion_to_insert);
-                            new_code.push_str(last);
-
-                            codepilot_code.raw_code = new_code;
-
-                            let ccursor_adjustment = completion_to_insert.len();
-
-                            if let Some(mut state) = TextEdit::load_state(ui.ctx(), response.id) {
-                                if let Some(mut ccursor_range) = state.ccursor_range() {
-                                    ccursor_range.primary.index += ccursor_adjustment;
-                                    ccursor_range.secondary = ccursor_range.primary;
-                                    state.set_ccursor_range(Some(ccursor_range));
-                                    state.store(ui.ctx(), response.id);   
-                                }
-                            }
-    
-                        } 
-                    }
 
                     if prev_raw_code != codepilot_code.raw_code || codepilot_code.cursor_index != prev_cursor_index {
                         if let Some(last) = head.pop() {
@@ -223,19 +237,17 @@ fn egui_system(
                                 let completions = autocomplete::suggest_completions(last, &codepilot_code.raw_code);
                                 codepilot_code.completions = completions;
                                 codepilot_code.autocomplete_token = last.to_owned();
+                                codepilot_code.selected_completion = 0;
                             } else {
                                 codepilot_code.completions = Vec::new();
+                                codepilot_code.selected_completion = 0;
                                 codepilot_code.autocomplete_token = String::new();
                             }
                         }
-                   
                     }
 
                     loc.x += 7. * cursor_col as f32;
                     loc.y += 14. * (cursor_row as f32 + 1.);
-
-                    #[derive(PartialEq)]
-                    enum Enum { First, Second, Third }
 
                     if codepilot_code.completions.len() > 0 {
                         let completions = codepilot_code.completions.clone();

@@ -34,4 +34,4 @@ class Ship():
 
 s = Ship()
 
-s
+s.player_velocity

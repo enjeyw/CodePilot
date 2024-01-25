@@ -14,6 +14,7 @@ class Ship():
 
 
 
+
 class Ship():
 
     def __init__(self, f):
@@ -23,6 +24,8 @@ class Ship():
         self.heading_angle = player_position[3: 4]
         print(f)
 
+
+
     def print_velocity(self):
         print(self.velocity)
 
@@ -31,7 +34,3 @@ class Ship():
 
     def p_foo(self):
         print("foo")
-
-s = Ship()
-
-s.player_velocity

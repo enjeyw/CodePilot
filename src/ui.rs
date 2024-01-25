@@ -129,7 +129,7 @@ fn egui_system(
                 let prev_raw_code = codepilot_code.raw_code.clone();
                 let prev_cursor_index = codepilot_code.cursor_index.clone();
 
-                let mut ccursor_adjustment = 0;
+                let mut ccursor_adjustment: isize = 0;
 
                 // If we escape autocomplete, we need to regain focus on the text box
                 let mut escaped = false;
@@ -181,11 +181,13 @@ fn egui_system(
     
                                 codepilot_code.raw_code = new_code;
     
-                                ccursor_adjustment = completion_to_insert.len();
+                                ccursor_adjustment = completion_to_insert.len() as isize;
                         } 
                     }
                 }
-                
+
+                let newline_requested = ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter));
+                let backspace_requested = ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::NONE, egui::Key::Backspace));
 
                 let mut output = egui::TextEdit::multiline(&mut codepilot_code.raw_code)
                 .font(egui::TextStyle::Monospace) // for cursor height
@@ -202,10 +204,7 @@ fn egui_system(
                     response.request_focus();
                 }
 
-                let response_id = response.id;
-          
                 let mut loc = response.rect.left_top();                
-                
                 loc.x += 3.;
 
                 if let Some(text_cursor_range) = output.cursor_range {
@@ -216,17 +215,6 @@ fn egui_system(
                     let cursor_row = text_cursor_range.primary.rcursor.row;
                     let cursor_col = text_cursor_range.primary.rcursor.column;
 
-                    if let Some(mut state) = TextEdit::load_state(ui.ctx(), response_id) {
-                        if let Some(mut ccursor_range) = state.ccursor_range() {
-                            if ccursor_adjustment != 0 {
-                                ccursor_range.primary.index += ccursor_adjustment;
-                                ccursor_range.secondary = ccursor_range.primary;
-                                state.set_ccursor_range(Some(ccursor_range));
-                                state.store(ui.ctx(), response.id);   
-                            }
-                        }
-                    }
-                    
                     // split the head on tabs, spaces or newlines
                     let head: &str = &codepilot_code.raw_code.clone()[..cindex];
                     let mut head = head.split(|c| c == '\t' || c == ' ' || c == '\n').collect::<Vec<_>>();
@@ -263,7 +251,56 @@ fn egui_system(
                                         );
                                 }
                             });
-                    }  
+                    }
+
+                    if newline_requested {
+                        // add a newline to the code, with the same indentation as the previous line
+                        let code_lines = codepilot_code.raw_code.split('\n').collect::<Vec<_>>();
+                        let active_line = code_lines[cursor_row].to_owned();
+                        
+                        //supports tab indendation and space indentation but not both at the same time b
+                        let mut total_tabs_at_start_of_active_line = active_line.chars().take_while(|c: &char| *c == '\t').count();
+                        let mut total_spaces_at_start_of_active_line = active_line.chars().take_while(|c: &char| *c ==' ').count();
+
+                        if active_line.ends_with(':') || active_line.ends_with('{') || active_line.ends_with('[') || active_line.ends_with('(') {
+                            if total_tabs_at_start_of_active_line > 0 {
+                                total_tabs_at_start_of_active_line += 1
+                            } else {
+                                total_spaces_at_start_of_active_line += 4
+                            }
+                        }
+
+                        let indent = "\n".to_owned() + &"\t".repeat(total_tabs_at_start_of_active_line) + &" ".repeat(total_spaces_at_start_of_active_line);
+
+                        codepilot_code.raw_code.insert_str(cindex, &indent);
+
+                        ccursor_adjustment += (1 + total_tabs_at_start_of_active_line + total_spaces_at_start_of_active_line) as isize;   
+                    }
+
+                    if backspace_requested {
+                        // if the previous characters are 4X spaces, remove all 4 (it's an indent), otherwise just do a regular backspace 
+
+                        if codepilot_code.raw_code.clone()[..cindex].ends_with("    ") {
+                            for _ in 0..4 {
+                                codepilot_code.raw_code.remove(cindex - 4);
+                                ccursor_adjustment -= 1;
+                            };
+                        } else {
+                            codepilot_code.raw_code.remove(cindex - 1);
+                            ccursor_adjustment -= 1;
+                        }
+                    }
+
+                    if let Some(mut state) = TextEdit::load_state(ui.ctx(),  response.id) {
+                        if let Some(mut ccursor_range) = state.ccursor_range() {
+                            if ccursor_adjustment != 0 {
+                                ccursor_range.primary.index = (ccursor_range.primary.index as isize + ccursor_adjustment) as usize;
+                                ccursor_range.secondary = ccursor_range.primary;
+                                state.set_ccursor_range(Some(ccursor_range));
+                                state.store(ui.ctx(), response.id);   
+                            }
+                        }
+                    }
                 };
             });
         });

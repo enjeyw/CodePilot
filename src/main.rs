@@ -7,6 +7,7 @@ use bevy::text::BreakLineOn;
 use bevy::{math::Vec3Swizzles, diagnostic::LogDiagnosticsPlugin};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
+use bevy_egui::egui::Id;
 use components::{
 	CameraMarker, Enemy, Explosion, ExplosionTimer, ExplosionToSpawn, FromEnemy, FromPlayer, Laser, Movable,
 	Player, SpriteSize, Velocity, ScoreText, MaxScoreText, CodePilotActiveText, WeaponChargeBar
@@ -22,16 +23,19 @@ use ui::UIPlugin;
 use movement::MovementPlugin;
 use enemy::EnemyPlugin;
 use player::PlayerPlugin;
+use codepilot::CodePilotPlugin;
 use combat::CombatPlugin;
 use post_processing::{PostProcessPlugin, PostProcessSettings};
 use std::{collections::HashSet, f32::consts::PI};
 
+mod autocomplete;
 mod ui;
 mod movement;
 mod post_processing;
 mod components;
 mod enemy;
 mod player;
+mod codepilot;
 mod combat;
 
 // region:    --- Asset Constants
@@ -94,19 +98,24 @@ struct GameTextures {
 	engine: Handle<TextureAtlas>
 }
 
-#[derive(Default, Resource)]
-pub struct UiState {
-    player_code: String,
-}
-
 #[derive(Resource)]
 pub struct CodePilotCode {
+	raw_code: String,
     compiled: Option<PyRef<PyCode>>,
+	completions: Vec<String>,
+	autocomplete_token: String,
+	cursor_index: Option<usize>,
+	selected_completion: usize,
 }
 impl Default for CodePilotCode {
 	fn default() -> Self {
 		Self {
-			compiled: None
+			raw_code: String::new(),
+			compiled: None,
+			completions: Vec::new(),
+			autocomplete_token: String::new(),
+			cursor_index: None,
+			selected_completion: 0
 		}
 	}
 }
@@ -155,10 +164,10 @@ impl PlayerState {
 // endregion: --- Resources
 
 fn main() {
+
 	App::new()
 		// .insert_resource(ClearColor(Color::rgb(0., 0., 0.)))
 		.insert_resource(ClearColor(Color::rgb(0.00, 0.00, 0.08)))
-		.init_resource::<UiState>()
 		.init_resource::<CodePilotCode>()
 		.add_plugins(FrameTimeDiagnosticsPlugin::default())
 		// .add_plugins(LogDiagnosticsPlugin::default())
@@ -175,6 +184,7 @@ fn main() {
 		.add_plugins(UIPlugin)
 		.add_plugins(MovementPlugin)
 		.add_plugins(PlayerPlugin)
+		.add_plugins(CodePilotPlugin)
 		.add_plugins(EnemyPlugin)
 		.add_plugins(CombatPlugin)
 		.add_systems(Startup, setup_system)

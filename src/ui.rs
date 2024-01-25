@@ -1,7 +1,9 @@
 use bevy::prelude::*;
-use bevy_egui::{EguiContexts, egui};
+use bevy_egui::{EguiContexts, egui::{self, Pos2, text_edit::{CCursorRange, CursorRange}, text::CCursor, epaint::text::cursor::Cursor, TextEdit}};
 
-use crate::{PlayerState, CodePilotCode, components::{CodePilotActiveText, ScoreText, WeaponChargeBar}, UiState};
+use egui_extras::syntax_highlighting::highlight;
+
+use crate::{PlayerState, CodePilotCode, components::{CodePilotActiveText, ScoreText, WeaponChargeBar}, autocomplete};
 
 pub struct UIPlugin;
 
@@ -21,7 +23,6 @@ fn ui_setup_system (
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut contexts: EguiContexts,
-    mut ui_state: ResMut<UiState>,
 ) { 
 
     //Setup the HUD
@@ -99,19 +100,211 @@ fn ui_setup_system (
 	});
 }
 
+
 fn egui_system(
-	mut ui_state: ResMut<UiState>,
+	mut codepilot_code: ResMut<CodePilotCode>,
 	mut contexts: EguiContexts) {
 	let ctx = contexts.ctx_mut();
 
+    // Load these once at the start of your program
     egui::SidePanel::right("right_panel")
-	.min_width(300.0)
-	.show(ctx, |ui| {
-        ui.vertical(|ui| {
-			ui.label("Add Codepilot Code: ");
-			ui.code_editor(&mut ui_state.player_code);
-		});
-    });
+    	.min_width(400.0)
+    	.show(ctx, |ui| {
+                
+            ui.vertical(|ui| {
+    			ui.label("Add Codepilot Code: ");
+
+                
+                let language = "py";
+                let theme = egui_extras::syntax_highlighting::CodeTheme::from_memory(ui.ctx());
+
+                let mut layouter = |ui: &egui::Ui, string: &str, _wrap_width: f32| {
+                    let layout_job = highlight(ui.ctx(), &theme, string, language);
+                    // layout_job.wrap.max_width = wrap_width; // no wrapping
+                    ui.fonts(|f| f.layout_job(layout_job))
+                };
+
+                // https://github.com/emilk/egui/blob/ccbddcfe951e01c55efd0ed19f2f2ab5edfad5d9/egui_demo_lib/src/apps/demo/text_edit.rs
+
+                let prev_raw_code = codepilot_code.raw_code.clone();
+                let prev_cursor_index = codepilot_code.cursor_index.clone();
+
+                let mut ccursor_adjustment: isize = 0;
+
+                // If we escape autocomplete, we need to regain focus on the text box
+                let mut escaped = false;
+
+                let completions_len = codepilot_code.completions.len();
+                if completions_len > 0 {
+
+                    if ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) { 
+                        escaped = true;
+                        codepilot_code.completions = Vec::new();
+                    }
+                    
+                    if ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown)) { 
+                        codepilot_code.selected_completion = (codepilot_code.selected_completion + 1) % completions_len;
+                    }
+
+                    if ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp)) { 
+                        codepilot_code.selected_completion = (codepilot_code.selected_completion - 1) % completions_len;
+                    }
+
+                    if let Some(cursor_index) = codepilot_code.cursor_index {
+                        if ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::NONE, egui::Key::Tab)) ||
+                            ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter)){ 
+                        
+                            let completion = codepilot_code.completions[codepilot_code.selected_completion].clone();
+    
+                            //we need to strip the part of the completion that is identical
+                            let mut autocomp_token_len = codepilot_code.autocomplete_token.len();
+    
+                            //now handle the special case of autocompletion of a class function, where only after the dot will be filled
+                            if completion.starts_with(".") {
+                                let split_input = codepilot_code.autocomplete_token.split('.').collect::<Vec<_>>();
+                                let split_input_len = split_input.len();
+    
+                                if split_input_len == 1 {
+                                    //no dot present in input token, which means we're at the end of the class assignment
+                                    autocomp_token_len = 0;
+                                } else {
+                                    autocomp_token_len = split_input[split_input_len - 1].len() + 1;
+                                }
+    
+                            }
+                           
+                            let (first, last) = prev_raw_code.split_at(cursor_index);
+                                let mut new_code: String = first.to_owned();
+                                let completion_to_insert = &completion.as_str()[autocomp_token_len..];
+                                new_code.push_str(completion_to_insert);
+                                new_code.push_str(last);
+    
+                                codepilot_code.raw_code = new_code;
+    
+                                ccursor_adjustment = completion_to_insert.len() as isize;
+                        } 
+                    }
+                }
+
+                let newline_requested = ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter));
+                let backspace_requested = ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::NONE, egui::Key::Backspace));
+
+                let mut output = egui::TextEdit::multiline(&mut codepilot_code.raw_code)
+                .font(egui::TextStyle::Monospace) // for cursor height
+                .code_editor()
+                .desired_rows(10)
+                .desired_width(400.)
+                .lock_focus(true)
+                .layouter(&mut layouter)
+                .show(ui);
+
+                let mut response = output.response;
+
+                if escaped {
+                    response.request_focus();
+                }
+
+                let mut loc = response.rect.left_top();                
+                loc.x += 3.;
+
+                if let Some(text_cursor_range) = output.cursor_range {
+                    let cindex: usize = text_cursor_range.primary.ccursor.index;
+
+                    codepilot_code.cursor_index =Some(cindex);
+
+                    let cursor_row = text_cursor_range.primary.rcursor.row;
+                    let cursor_col = text_cursor_range.primary.rcursor.column;
+
+                    // split the head on tabs, spaces or newlines
+                    let head: &str = &codepilot_code.raw_code.clone()[..cindex];
+                    let mut head = head.split(|c| c == '\t' || c == ' ' || c == '\n').collect::<Vec<_>>();
+
+                    if prev_raw_code != codepilot_code.raw_code || codepilot_code.cursor_index != prev_cursor_index {
+                        if let Some(last) = head.pop() {
+                            if last != "" {
+                                let completions = autocomplete::suggest_completions(last, &codepilot_code.raw_code);
+                                codepilot_code.completions = completions;
+                                codepilot_code.autocomplete_token = last.to_owned();
+                                codepilot_code.selected_completion = 0;
+                            } else {
+                                codepilot_code.completions = Vec::new();
+                                codepilot_code.selected_completion = 0;
+                                codepilot_code.autocomplete_token = String::new();
+                            }
+                        }
+                    }
+
+                    loc.x += 7. * cursor_col as f32;
+                    loc.y += 14. * (cursor_row as f32 + 1.);
+
+                    if codepilot_code.completions.len() > 0 {
+                        let completions = codepilot_code.completions.clone();
+                        egui::Window::new("Codepilot")
+                            .fixed_pos(loc)
+                            .title_bar(false)
+                            .show(ctx, |ui| {
+                                for (idx, completion) in completions.iter().enumerate() {
+                                    ui.selectable_value(
+                                        &mut codepilot_code.selected_completion,
+                                        idx,
+                                        completion
+                                        );
+                                }
+                            });
+                    }
+
+                    if newline_requested {
+                        // add a newline to the code, with the same indentation as the previous line
+                        let code_lines = codepilot_code.raw_code.split('\n').collect::<Vec<_>>();
+                        let active_line = code_lines[cursor_row].to_owned();
+                        
+                        //supports tab indendation and space indentation but not both at the same time b
+                        let mut total_tabs_at_start_of_active_line = active_line.chars().take_while(|c: &char| *c == '\t').count();
+                        let mut total_spaces_at_start_of_active_line = active_line.chars().take_while(|c: &char| *c ==' ').count();
+
+                        if active_line.ends_with(':') || active_line.ends_with('{') || active_line.ends_with('[') || active_line.ends_with('(') {
+                            if total_tabs_at_start_of_active_line > 0 {
+                                total_tabs_at_start_of_active_line += 1
+                            } else {
+                                total_spaces_at_start_of_active_line += 4
+                            }
+                        }
+
+                        let indent = "\n".to_owned() + &"\t".repeat(total_tabs_at_start_of_active_line) + &" ".repeat(total_spaces_at_start_of_active_line);
+
+                        codepilot_code.raw_code.insert_str(cindex, &indent);
+
+                        ccursor_adjustment += (1 + total_tabs_at_start_of_active_line + total_spaces_at_start_of_active_line) as isize;   
+                    }
+
+                    if backspace_requested {
+                        // if the previous characters are 4X spaces, remove all 4 (it's an indent), otherwise just do a regular backspace 
+
+                        if codepilot_code.raw_code.clone()[..cindex].ends_with("    ") {
+                            for _ in 0..4 {
+                                codepilot_code.raw_code.remove(cindex - 4);
+                                ccursor_adjustment -= 1;
+                            };
+                        } else {
+                            codepilot_code.raw_code.remove(cindex - 1);
+                            ccursor_adjustment -= 1;
+                        }
+                    }
+
+                    if let Some(mut state) = TextEdit::load_state(ui.ctx(),  response.id) {
+                        if let Some(mut ccursor_range) = state.ccursor_range() {
+                            if ccursor_adjustment != 0 {
+                                ccursor_range.primary.index = (ccursor_range.primary.index as isize + ccursor_adjustment) as usize;
+                                ccursor_range.secondary = ccursor_range.primary;
+                                state.set_ccursor_range(Some(ccursor_range));
+                                state.store(ui.ctx(), response.id);   
+                            }
+                        }
+                    }
+                };
+            });
+        });
+
 }
 
 fn spawn_bar(parent: &mut ChildBuilder, asset_server: Res<AssetServer>) {

@@ -1,6 +1,6 @@
 use self::formation::{Formation, FormationMaker};
-use crate::combat::{Allegiance, spawn_shield_sprite};
-use crate::components::{Enemy, FromEnemy, Laser, Movable, SpriteSize, Velocity, Player, Ship};
+use crate::combat::spawn_shield_sprite;
+use crate::components::{Allegiance, Enemy, FromEnemy, Laser, Movable, SpriteSize, Velocity, Player, Ship};
 use crate::{
 	EnemyCount, GameTextures, WinSize, ENEMY_LASER_SIZE, ENEMY_MAX, ENEMY_SIZE, SPRITE_SCALE,
 };

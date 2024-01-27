@@ -1,5 +1,6 @@
-use crate::combat::{FireWeaponEvent, WeaponType, Allegiance, spawn_shield_sprite};
-use crate::components::{FromPlayer, Laser, Movable, Player, SpriteSize, Velocity, ExplosionToSpawn, Enemy, Weapon, Ship, EMP};
+use crate::combat::spawn_shield_sprite;
+use crate::components::{FromPlayer, Laser, Movable, Player, SpriteSize, Velocity, ExplosionToSpawn, Enemy, Weapon, Ship, EMP, Allegiance};
+use crate::events::FireWeaponEvent;
 use crate::{
 	GameTextures, PlayerState, WinSize, PLAYER_LASER_SIZE, PLAYER_RESPAWN_DELAY, PLAYER_SIZE,
 	SPRITE_SCALE, CodePilotCode, enemy
@@ -341,7 +342,7 @@ fn player_fire_system(
 			info!("Sending fire EMP event");
 			fire_weapon_event.send({
 				FireWeaponEvent {
-					weapon_type: WeaponType::EMP,
+					weapon_type: crate::components::WeaponType::EMP,
 					weapon_alignment: Allegiance::Friendly,
 					firing_entity: player_ent
 				}

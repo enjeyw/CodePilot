@@ -8,12 +8,14 @@ use bevy::{math::Vec3Swizzles, diagnostic::LogDiagnosticsPlugin};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy_egui::egui::Id;
+use bevy_egui::egui::text_edit::{CursorRange, CCursorRange};
 use components::{
 	CameraMarker, Enemy, Explosion, ExplosionTimer, ExplosionToSpawn, FromEnemy, FromPlayer, Laser, Movable,
 	Player, SpriteSize, Velocity, ScoreText, MaxScoreText, CodePilotActiveText, WeaponChargeBar
 };
 use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
+use events::CompileCodeEvent;
 use rustpython_vm as vm;
 use vm::{builtins::PyCode, PyRef};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -28,11 +30,12 @@ use combat::CombatPlugin;
 use post_processing::{PostProcessPlugin, PostProcessSettings};
 use std::{collections::HashSet, f32::consts::PI};
 
+mod components;
+mod events;
 mod autocomplete;
 mod ui;
 mod movement;
 mod post_processing;
-mod components;
 mod enemy;
 mod player;
 mod codepilot;
@@ -104,7 +107,7 @@ pub struct CodePilotCode {
     compiled: Option<PyRef<PyCode>>,
 	completions: Vec<String>,
 	autocomplete_token: String,
-	cursor_index: Option<usize>,
+	cursor_range: Option<CCursorRange>,
 	selected_completion: usize,
 }
 impl Default for CodePilotCode {
@@ -114,7 +117,7 @@ impl Default for CodePilotCode {
 			compiled: None,
 			completions: Vec::new(),
 			autocomplete_token: String::new(),
-			cursor_index: None,
+			cursor_range: None,
 			selected_completion: 0
 		}
 	}
@@ -188,6 +191,7 @@ fn main() {
 		.add_plugins(EnemyPlugin)
 		.add_plugins(CombatPlugin)
 		.add_systems(Startup, setup_system)
+        .add_event::<CompileCodeEvent>()
 		.run();
 }
 

@@ -8,7 +8,7 @@ use rustpython::vm::{
 };
 use vm::convert::ToPyObject;
 
-use crate::{CodePilotCode, GameTextures, PlayerState, components::{Velocity, Player, Enemy}, player::{try_fire_weapon, accelerate_counterclockwise, accelerate_clockwise, accelerate_forward, accelerate_backward}};
+use crate::{CodePilotCode, GameTextures, PlayerState, components::{Velocity, Player, Enemy}, player::{try_fire_weapon, accelerate_counterclockwise, accelerate_clockwise, accelerate_forward, accelerate_backward}, events::CompileCodeEvent};
 
 macro_rules! add_python_function {
     ( $scope:ident, $vm:ident, $src:literal $(,)? ) => {{
@@ -55,33 +55,31 @@ impl ToPyObject for PyAccessibleV3Vec {
 }
 fn player_codepilot_compile_system(
 	mut commands: Commands,
-	kb: Res<Input<KeyCode>>,
+	mut compile_code_event: EventReader<CompileCodeEvent>,
 	mut codepilot_code: ResMut<CodePilotCode>,
 ) {
+	for ev in compile_code_event.read() {
+        let mut settings = vm::Settings::default();
+		settings.path_list.push("Lib".to_owned());
+		let interp = vm::Interpreter::with_init(settings, |vm| {
+			vm.add_native_modules(stdlib::get_module_inits());
+		});
 
-	// if kb.just_pressed(KeyCode::Return) {
+		let code_obj = interp.enter(|vm| {
+			let scope: vm::scope::Scope = vm.new_scope_with_builtins();
 
-	// 	let mut settings = vm::Settings::default();
-	// 	settings.path_list.push("Lib".to_owned());
-	// 	let interp = vm::Interpreter::with_init(settings, |vm| {
-	// 		vm.add_native_modules(stdlib::get_module_inits());
-	// 	});
-
-	// 	let code_obj = interp.enter(|vm| {
-	// 		let scope: vm::scope::Scope = vm.new_scope_with_builtins();
-
-	// 		let source = codepilot_code.raw_code.as_str();
+			let source = codepilot_code.raw_code.as_str();
 			
-	// 		let code_obj_res = vm
-	// 			.compile(source, vm::compiler::Mode::Exec, "<embedded>".to_owned())
-	// 			.map_err(|err| vm.new_syntax_error(&err, Some(source)));
+			let code_obj_res = vm
+				.compile(source, vm::compiler::Mode::Exec, "<embedded>".to_owned())
+				.map_err(|err| vm.new_syntax_error(&err, Some(source)));
 
-	// 		if let Ok(code_obj) = code_obj_res {
-	// 			info!("Compiled Result");
-	// 			codepilot_code.compiled = Some(code_obj);
-	// 		}
-	// 	});
-	// }
+			if let Ok(code_obj) = code_obj_res {
+				info!("Compiled Result");
+				codepilot_code.compiled = Some(code_obj);
+			}
+		});
+    }
 }
 
 fn try_boolean_python_action (key: &str, scope: &vm::scope::Scope, vm: &VirtualMachine) -> bool {

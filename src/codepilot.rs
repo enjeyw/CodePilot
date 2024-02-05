@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use bevy::{prelude::*, utils::HashSet, sprite::{collide_aabb::collide, MaterialMesh2dBundle, Mesh2dHandle}, render::mesh};
 
 use rustpython_vm as vm;
@@ -8,7 +10,7 @@ use rustpython::vm::{
 };
 use vm::convert::ToPyObject;
 
-use crate::{CodePilotCode, GameTextures, PlayerState, components::{Velocity, Player, Enemy}, player::{try_fire_weapon, accelerate_counterclockwise, accelerate_clockwise, accelerate_forward, accelerate_backward}, events::CompileCodeEvent};
+use crate::{CodePilotCode, GameTextures, PlayerState, components::{Velocity, Player, Enemy}, player::{try_fire_weapon, accelerate_counter_clockwise, accelerate_clockwise, accelerate_forward, accelerate_backward}, events::CompileCodeEvent, CommandState};
 
 macro_rules! add_python_function {
     ( $scope:ident, $vm:ident, $src:literal $(,)? ) => {{
@@ -202,34 +204,40 @@ fn codepilot_event_system(
 					}
 				}
 
-				let fire = scope.globals.get_item("fire", vm);
-
+				let mut command_state = CommandState::default();
+			
 				if try_boolean_python_action("fire", &scope, vm) {
-
 					try_fire_weapon(&mut commands, &game_textures, &mut player_state, transform);
+					command_state.fire = true;
 				}
 
 				if try_boolean_python_action("counterclockwise", &scope, vm) {
-					accelerate_counterclockwise(
-						&mut velocity, transform, ang_acceleration, max_ang_velocity, heading_vec, heading_perp, &mut commands)
+					accelerate_counter_clockwise(
+						&mut velocity, transform, ang_acceleration, max_ang_velocity, heading_vec, heading_perp, &mut commands);
+					command_state.counter_clockwise = true;
 				}
 
 				if try_boolean_python_action("clockwise", &scope, vm) {
 					accelerate_clockwise(
-						&mut velocity, transform, ang_acceleration, max_ang_velocity, heading_vec, heading_perp, &mut commands)
+						&mut velocity, transform, ang_acceleration, max_ang_velocity, heading_vec, heading_perp, &mut commands);
+					command_state.clockwise = true;
 				}
 
 				if try_boolean_python_action("forward", &scope, vm) {
 					accelerate_forward(
 						&mut velocity, transform, acceleration, max_speed, heading_vec, heading_perp, &mut commands
-					)
+					);
+					command_state.forward = true;
 				}
 
 				if try_boolean_python_action("backward", &scope, vm) {
 					accelerate_backward(
 						&mut velocity, transform, acceleration, max_speed, heading_vec, heading_perp, &mut commands
-					)
+					);
+					command_state.backward = true;
 				}
+
+				codepilot_code.command_state_history.push(command_state);
 
 			});
 		}

@@ -348,6 +348,19 @@ fn egui_system(
                     .show(ui);
                 }
 
+                let mut text = String::new();
+
+                codepilot_code.command_state_history.windows(2).for_each(|state| {
+                    text.push_str(state[0]);
+                    text.push_str("\n");
+                });
+
+                egui::TextEdit::multiline(&mut text)
+                    .font(egui::TextStyle::Monospace) // for cursor height
+                    .code_editor()
+                    .desired_width(400.)
+                    .show(ui);
+
             });
         });
 

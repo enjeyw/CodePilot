@@ -271,7 +271,7 @@ pub fn accelerate_backward(
 	},));
 }
 
-pub fn accelerate_counterclockwise(
+pub fn accelerate_counter_clockwise(
 	velocity: &mut Velocity,
 	transform: &Transform,
 	ang_acceleration: f32,
@@ -396,7 +396,7 @@ fn player_keyboard_event_system(
 		}
 
 		if kb.pressed(KeyCode::A) {
-			accelerate_counterclockwise(
+			accelerate_counter_clockwise(
 				&mut velocity, transform, ang_acceleration, max_ang_velocity, heading, heading_perp, &mut commands)
 		}
 

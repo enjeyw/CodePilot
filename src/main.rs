@@ -18,6 +18,7 @@ use bevy_egui::{egui, EguiContexts, EguiPlugin};
 use events::CompileCodeEvent;
 use rustpython_vm as vm;
 use vm::{builtins::PyCode, PyRef};
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use rand::{Rng, rngs::StdRng, SeedableRng, thread_rng};
 
@@ -101,11 +102,33 @@ struct GameTextures {
 	engine: Handle<TextureAtlas>
 }
 
+#[derive(Clone)]
+pub struct CommandState {
+	fire: bool,
+	forward: bool,
+	backward: bool,
+	clockwise: bool,
+	counter_clockwise: bool,
+}
+
+impl CommandState {
+	pub fn default() -> Self {
+		Self {
+			fire: false,
+			forward: false,
+			backward: false,
+			clockwise: false,
+			counter_clockwise: false
+		}
+	}
+}
+
 #[derive(Resource)]
 pub struct CodePilotCode {
 	raw_code: String,
     compiled: Option<PyRef<PyCode>>,
 	py_result: Option<String>,
+	command_state_history: Vec<CommandState>,
 	completions: Vec<String>,
 	autocomplete_token: String,
 	cursor_range: Option<CCursorRange>,
@@ -117,6 +140,7 @@ impl Default for CodePilotCode {
 			raw_code: String::new(),
 			compiled: None,
 			py_result: None,
+			command_state_history: Vec::new(),
 			completions: Vec::new(),
 			autocomplete_token: String::new(),
 			cursor_range: None,

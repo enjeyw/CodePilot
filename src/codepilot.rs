@@ -74,9 +74,15 @@ fn player_codepilot_compile_system(
 				.compile(source, vm::compiler::Mode::Exec, "<embedded>".to_owned())
 				.map_err(|err| vm.new_syntax_error(&err, Some(source)));
 
-			if let Ok(code_obj) = code_obj_res {
-				info!("Compiled Result");
-				codepilot_code.compiled = Some(code_obj);
+			match code_obj_res {
+				Ok(code_obj) => {
+					codepilot_code.compiled = Some(code_obj);
+				}
+				Err(exc) => {
+					let mut s = String::new();
+					vm.write_exception(&mut s, &exc);
+					codepilot_code.py_result = Some(s);
+				}
 			}
 		});
     }
@@ -96,13 +102,13 @@ fn try_boolean_python_action (key: &str, scope: &vm::scope::Scope, vm: &VirtualM
 		}
 	}
 
-	return false;
+		return false;
 }
 
 fn codepilot_event_system(
 	mut commands: Commands,
 	kb: Res<Input<KeyCode>>,
-	codepilot_code: Res<CodePilotCode>,
+	mut codepilot_code: ResMut<CodePilotCode>,
 	game_textures: Res<GameTextures>,
 	mut player_state: ResMut<PlayerState>,
 	mut query: Query<(&mut Velocity, &Transform), With<Player>>,
@@ -175,17 +181,25 @@ fn codepilot_event_system(
 
 				let helper_code = vm::py_compile!(file = "./src/python_helpers_5.py");
 		
-				let res = vm.run_code_obj(vm.ctx.new_code(helper_code), scope.clone());
-				match res {
-					Ok(_) => info!("Helper code ran successfully"),
-					Err(err) =>  { vm.print_exception(err) }
+				let helper_res = vm.run_code_obj(vm.ctx.new_code(helper_code), scope.clone());
+				match helper_res {
+					Ok(_) => {},
+					Err(exc) =>  { 
+						let mut s = String::new();
+						vm.write_exception(&mut s, &exc);
+						codepilot_code.py_result = Some(s);
+					}
 				}
 				
-				let res2 = vm.run_code_obj(cpc, scope.clone());
+				let player_code_res = vm.run_code_obj(cpc, scope.clone());
 
-				match res2 {
-					Ok(_) => info!("Codepilot code ran successfully"),
-					Err(err) =>  { vm.print_exception(err) }
+				match player_code_res {
+					Ok(player_code_res) => { codepilot_code.py_result = None},
+					Err(exc) =>  { 
+						let mut s = String::new();
+						vm.write_exception(&mut s, &exc);
+						codepilot_code.py_result = Some(s);
+					}
 				}
 
 				let fire = scope.globals.get_item("fire", vm);

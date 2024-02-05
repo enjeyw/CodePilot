@@ -105,6 +105,7 @@ struct GameTextures {
 pub struct CodePilotCode {
 	raw_code: String,
     compiled: Option<PyRef<PyCode>>,
+	py_result: Option<String>,
 	completions: Vec<String>,
 	autocomplete_token: String,
 	cursor_range: Option<CCursorRange>,
@@ -115,6 +116,7 @@ impl Default for CodePilotCode {
 		Self {
 			raw_code: String::new(),
 			compiled: None,
+			py_result: None,
 			completions: Vec::new(),
 			autocomplete_token: String::new(),
 			cursor_range: None,

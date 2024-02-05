@@ -333,6 +333,21 @@ fn egui_system(
                     }
 
                 };
+
+                if let Some(py_result) = codepilot_code.py_result.clone() {
+                    let cleaned_result = py_result
+                    .replace(r#"File "<embedded>", "#, "")
+                    .replace(r#", in <module>"#, "");
+                    
+                    let mut text = cleaned_result.as_str();
+
+                    egui::TextEdit::multiline(&mut text)
+                    .font(egui::TextStyle::Monospace) // for cursor height
+                    .code_editor()
+                    .desired_width(400.)
+                    .show(ui);
+                }
+
             });
         });
 

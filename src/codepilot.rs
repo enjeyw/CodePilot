@@ -113,6 +113,7 @@ fn codepilot_event_system(
 	mut codepilot_code: ResMut<CodePilotCode>,
 	game_textures: Res<GameTextures>,
 	mut player_state: ResMut<PlayerState>,
+	time: Res<Time>,
 	mut query: Query<(&mut Velocity, &Transform), With<Player>>,
 	enemy_query: Query<(&Velocity, &Transform), (Without<Player>, With<Enemy>)>,
 ) {
@@ -237,7 +238,20 @@ fn codepilot_event_system(
 					command_state.backward = true;
 				}
 
-				codepilot_code.command_state_history.push(command_state);
+				let time = time.elapsed_seconds();
+
+				if let Some(command) = codepilot_code.command_state_history.last() {
+					let last_command_state = &command.1;
+					if last_command_state != &command_state {
+						codepilot_code.command_state_history.push((time, command_state));
+					}
+				} else {
+					codepilot_code.command_state_history.push((time, command_state));
+				};
+
+				if codepilot_code.command_state_history.len() > 10 {
+					codepilot_code.command_state_history.remove(0);
+				}
 
 			});
 		}

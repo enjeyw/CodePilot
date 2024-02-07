@@ -104,7 +104,7 @@ fn ui_setup_system (
 fn egui_system(
 	mut codepilot_code: ResMut<CodePilotCode>,
     mut compile_code_event: EventWriter<CompileCodeEvent>,
-	mut contexts: EguiContexts
+	mut contexts: EguiContexts,
 ) {
     let ctx = contexts.ctx_mut();
 
@@ -350,12 +350,18 @@ fn egui_system(
 
                 let mut text = String::new();
 
-                codepilot_code.command_state_history.windows(2).for_each(|state| {
-                    text.push_str(state[0]);
+                codepilot_code.command_state_history.iter().for_each(|(time, command)| {
+
+                    let fire = command.fire;
+
+                    let hist_line = format!("{time:.2} Fire: {fire}");
+
+                    text.push_str(&hist_line);
                     text.push_str("\n");
                 });
 
-                egui::TextEdit::multiline(&mut text)
+                ui.label("Command History:");
+                egui::TextEdit::multiline(&mut text.as_str())
                     .font(egui::TextStyle::Monospace) // for cursor height
                     .code_editor()
                     .desired_width(400.)

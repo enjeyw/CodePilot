@@ -102,7 +102,7 @@ struct GameTextures {
 	engine: Handle<TextureAtlas>
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CommandState {
 	fire: bool,
 	forward: bool,
@@ -128,7 +128,7 @@ pub struct CodePilotCode {
 	raw_code: String,
     compiled: Option<PyRef<PyCode>>,
 	py_result: Option<String>,
-	command_state_history: Vec<CommandState>,
+	command_state_history: Vec<(f32, CommandState)>, // time, command state
 	completions: Vec<String>,
 	autocomplete_token: String,
 	cursor_range: Option<CCursorRange>,

@@ -61,13 +61,11 @@ fn player_codepilot_compile_system(
 	mut codepilot_code: ResMut<CodePilotCode>,
 ) {
 	for ev in compile_code_event.read() {
-        let mut settings = vm::Settings::default();
-		settings.path_list.push("Lib".to_owned());
-		let interp = vm::Interpreter::with_init(settings, |vm| {
-			vm.add_native_modules(stdlib::get_module_inits());
-		});
+		let interpreter = rustpython::InterpreterConfig::new()
+				.init_stdlib()
+				.interpreter();
 
-		let code_obj = interp.enter(|vm| {
+		let code_obj = interpreter.enter(|vm| {
 			let scope: vm::scope::Scope = vm.new_scope_with_builtins();
 
 			let source = codepilot_code.raw_code.as_str();
@@ -154,8 +152,14 @@ fn codepilot_event_system(
 
 		// Codepilot player control section
 		if let Some(cpc) = codepilot_code.compiled.clone() {
-			
-			vm::Interpreter::without_stdlib(Default::default()).enter(|vm | {
+
+			let interpreter = rustpython::InterpreterConfig::new()
+				.init_stdlib()
+				.interpreter();
+
+			// let interpreter: vm::prelude::Interpreter = vm::Interpreter::without_stdlib(Default::default());
+
+			interpreter.enter(|vm | {
 				let scope = vm.new_scope_with_builtins();
 
 				// Set the player position

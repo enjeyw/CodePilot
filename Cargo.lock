@@ -2083,6 +2083,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3b9429470923de8e8cbd4d2dc513535400b4b3fef0319fb5c4e1f520a7bef743"
 dependencies = [
  "crc32fast",
+ "libz-sys",
  "miniz_oxide 0.7.1",
 ]
 
@@ -2853,6 +2854,18 @@ checksum = "3c8469b4a23b962c1396b9b451dda50ef5b283e8dd309d69033475fa9b334324"
 dependencies = [
  "libc",
  "pkg-config",
+]
+
+[[package]]
+name = "libz-sys"
+version = "1.1.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d97137b25e321a73eef1418d1d5d2eda4d77e12813f8e6dead84bc52c5870a7b"
+dependencies = [
+ "cc",
+ "libc",
+ "pkg-config",
+ "vcpkg",
 ]
 
 [[package]]
@@ -4068,6 +4081,7 @@ dependencies = [
  "log",
  "rustpython-compiler",
  "rustpython-parser",
+ "rustpython-pylib",
  "rustpython-stdlib",
  "rustpython-vm",
  "rustyline",
@@ -4268,6 +4282,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustpython-pylib"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b9936530f5ddf83aa5574fd1863d2a4a7e2b45d35043d4a8c324cb109b560200"
+dependencies = [
+ "glob",
+ "rustpython-compiler-core",
+ "rustpython-derive",
+]
+
+[[package]]
 name = "rustpython-stdlib"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4291,6 +4316,7 @@ dependencies = [
  "itertools 0.10.5",
  "libc",
  "libsqlite3-sys",
+ "libz-sys",
  "mac_address",
  "malachite-bigint",
  "md-5",

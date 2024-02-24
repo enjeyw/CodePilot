@@ -3,7 +3,7 @@ use bevy_egui::{EguiContexts, egui::{self, Pos2, text_edit::{CCursorRange, Curso
 
 use egui_extras::syntax_highlighting::highlight;
 
-use crate::{PlayerState, CodePilotCode, components::{CodePilotActiveText, ScoreText, WeaponChargeBar}, autocomplete, events::CompileCodeEvent};
+use crate::{autocomplete, components::{CodePilotActiveText, ScoreText, WeaponChargeBar}, events::CompileCodeEvent, CodePilotCode, CodePilotOutput, PlayerState, PyDebugMessage};
 
 pub struct UIPlugin;
 
@@ -350,14 +350,41 @@ fn egui_system(
 
                 let mut text = String::new();
 
-                codepilot_code.command_state_history.iter().for_each(|(time, command)| {
+                codepilot_code.codepilot_hist.iter().for_each(|(time, output)| {
 
-                    let fire = command.fire;
+                    match output {
+                        CodePilotOutput::CommandState(command) => {
+                            let fire = command.fire;
 
-                    let hist_line = format!("{time:.2} Fire: {fire}");
+                            let hist_line = format!("{time:.2} Fire: {fire}");
+                            text.push_str(&hist_line);
+                            text.push_str("\n");
 
-                    text.push_str(&hist_line);
-                    text.push_str("\n");
+                        }
+                        CodePilotOutput::DebugMessages(py_debug_messages) => {
+
+                            py_debug_messages.iter().for_each(|py_debug_message| {
+
+                                match py_debug_message {
+                                    PyDebugMessage::KeyLessDebug(message) => {
+                                        let hist_line = format!("{time:.2} Debug: {message}");
+                                        text.push_str(&hist_line);
+                                        text.push_str("\n");
+                                    }
+                                    PyDebugMessage::KeyedDebug(message) => {
+                                        if message.has_changed {
+                                            let key = message.key.clone();
+                                            let value = message.value.clone();
+                                            let hist_line = format!("{time:.2} Debug: {key} = {value}");
+                                            text.push_str(&hist_line);
+                                            text.push_str("\n");
+                                        } 
+                                    }
+                                }
+                            });
+                        }
+                    }                    
+
                 });
 
                 ui.label("Command History:");

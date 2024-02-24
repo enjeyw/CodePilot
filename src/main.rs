@@ -123,12 +123,35 @@ impl CommandState {
 	}
 }
 
+pub type KeyLessDebug = String;
+
+#[derive(Clone)]
+
+pub struct  KeyedDebug {
+	key: String,
+	value: String,
+	has_changed: bool
+}
+
+#[derive(Clone)]
+pub enum PyDebugMessage {
+    KeyLessDebug(KeyLessDebug),
+    KeyedDebug(KeyedDebug),
+}
+
+pub enum CodePilotOutput {
+	DebugMessages(Vec<PyDebugMessage>),
+	CommandState(CommandState)
+}
+
+pub type CodePilotHist = Vec<(f32, CodePilotOutput)>;
+
 #[derive(Resource)]
 pub struct CodePilotCode {
 	raw_code: String,
     compiled: Option<PyRef<PyCode>>,
 	py_result: Option<String>,
-	command_state_history: Vec<(f32, CommandState)>, // time, command state
+	codepilot_hist: Vec<(f32, CodePilotOutput)>, // time, command state
 	completions: Vec<String>,
 	autocomplete_token: String,
 	cursor_range: Option<CCursorRange>,
@@ -140,7 +163,7 @@ impl Default for CodePilotCode {
 			raw_code: String::new(),
 			compiled: None,
 			py_result: None,
-			command_state_history: Vec::new(),
+			codepilot_hist: Vec::new(),
 			completions: Vec::new(),
 			autocomplete_token: String::new(),
 			cursor_range: None,

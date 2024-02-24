@@ -12,5 +12,16 @@ class Ship():
     def foo(self):
         print("foo")
 
+debug_list = []
+def dbg(key = None, value = None):
+    if value is None:
+        return
+        
+    if key is None:
+        debug_list.append(("KeylessDebug_", value))
+    else:
+        debug_list.append((key, value))
+    
+
 
 

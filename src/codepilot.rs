@@ -3,14 +3,14 @@ use std::collections::HashMap;
 use bevy::{prelude::*, utils::HashSet, sprite::{collide_aabb::collide, MaterialMesh2dBundle, Mesh2dHandle}, render::mesh};
 
 use rustpython_vm as vm;
-use vm::PyObjectRef;
+use vm::{builtins::PyStr, PyObjectRef};
 use vm::builtins::PyList;
 use rustpython::vm::{
     pyclass, pymodule, PyObject, PyPayload, PyResult, TryFromBorrowedObject, VirtualMachine, stdlib
 };
 use vm::convert::ToPyObject;
 
-use crate::{CodePilotCode, GameTextures, PlayerState, components::{Velocity, Player, Enemy}, player::{try_fire_weapon, accelerate_counter_clockwise, accelerate_clockwise, accelerate_forward, accelerate_backward}, events::CompileCodeEvent, CommandState};
+use crate::{components::{Enemy, Player, Velocity}, events::CompileCodeEvent, player::{accelerate_backward, accelerate_clockwise, accelerate_counter_clockwise, accelerate_forward, try_fire_weapon}, CodePilotCode, CodePilotHist, CodePilotOutput, CommandState, GameTextures, KeyedDebug, PlayerState, PyDebugMessage};
 
 macro_rules! add_python_function {
     ( $scope:ident, $vm:ident, $src:literal $(,)? ) => {{
@@ -105,6 +105,31 @@ fn try_boolean_python_action (key: &str, scope: &vm::scope::Scope, vm: &VirtualM
 		return false;
 }
 
+fn get_last_debug_message_list(hist: &CodePilotHist) -> Option<Vec<PyDebugMessage>> {
+	for (_, hist_item) in hist.iter().rev() {
+		match hist_item {
+			CodePilotOutput::DebugMessages(debug_messages) => {
+				return Some(debug_messages.clone());
+			},
+			_ => {}
+		}
+	}
+	None
+}
+
+fn get_last_command_state(hist: &CodePilotHist) -> Option<CommandState> {
+	for (_, hist_item) in hist.iter().rev() {
+		match hist_item {
+			CodePilotOutput::CommandState(command_state) => {
+				return Some(command_state.clone());
+			},
+			_ => {}
+		}
+	}
+	None
+}
+
+
 fn codepilot_event_system(
 	mut commands: Commands,
 	kb: Res<Input<KeyCode>>,
@@ -186,7 +211,7 @@ fn codepilot_event_system(
 					.globals
 					.set_item("enemy_velocities", vm.new_pyobj(enemy_velocities), vm);
 
-				let helper_code = vm::py_compile!(file = "./src/python_helpers_5.py");
+				let helper_code = vm::py_compile!(file = "./src/python_helpers_12.py");
 		
 				let helper_res = vm.run_code_obj(vm.ctx.new_code(helper_code), scope.clone());
 				match helper_res {
@@ -244,18 +269,68 @@ fn codepilot_event_system(
 
 				let time = time.elapsed_seconds();
 
-				if let Some(command) = codepilot_code.command_state_history.last() {
-					let last_command_state = &command.1;
-					if last_command_state != &command_state {
-						codepilot_code.command_state_history.push((time, command_state));
+				let last_debug_messages = get_last_debug_message_list(&codepilot_code.codepilot_hist);
+				// if let Some(last_debug_message) = last_debug_message {
+				// 	if last_debug_message != PyDebugMessage::KeyLessDebug {
+				// 		codepilot_code.codepilot_hist.push((time, CodePilotOutput::PyDebugMessage(last_debug_message)));
+				// 	}
+				// }
+				
+				let debug_list: Result<PyObjectRef, vm::prelude::PyRef<vm::builtins::PyBaseException>> = scope.globals.get_item("debug_list", vm);
+
+				let mut next_debug_messages: Vec<PyDebugMessage> = Vec::new();
+
+				if let Ok(debug_list) = debug_list {
+					let seq = debug_list.to_sequence(vm);
+					let seq_len = seq.length(vm);
+
+					if let Ok(seq_len) = seq_len {
+						for i in 0..seq_len {
+							let item = seq.get_item(i as isize, vm).unwrap();
+							let tuple =  item.to_sequence(vm);
+			
+							let key = tuple.get_item(0, vm).unwrap().str(vm).unwrap().to_string();
+							let value = tuple.get_item(1, vm).unwrap().str(vm).unwrap().to_string();
+
+							if key == "KeylessDebug_" {
+								next_debug_messages.push(PyDebugMessage::KeyLessDebug(value));
+							} else {
+								let message_matches = if let Some(ref last_debug_messages) = last_debug_messages {
+									last_debug_messages.iter().any(|m| {
+										match m {
+											PyDebugMessage::KeyedDebug(kd) => {
+												kd.key == key && kd.value == value
+											},
+											_ => false
+										}
+									})
+								} else {
+									false
+								};
+								
+								next_debug_messages.push(PyDebugMessage::KeyedDebug(KeyedDebug {
+									key,
+									value,
+									has_changed: !message_matches
+								}));									
+							}
+						}
+					}
+				}
+
+				if next_debug_messages.len() > 0 {
+					codepilot_code.codepilot_hist.push((time, CodePilotOutput::DebugMessages(next_debug_messages)));
+				}
+
+				let last_command_state = get_last_command_state(&codepilot_code.codepilot_hist);
+				if let Some(last_command_state) = last_command_state {
+					if last_command_state != command_state {
+						codepilot_code.codepilot_hist.push((time, CodePilotOutput::CommandState(command_state)));
 					}
 				} else {
-					codepilot_code.command_state_history.push((time, command_state));
+					codepilot_code.codepilot_hist.push((time, CodePilotOutput::CommandState(command_state)));
 				};
 
-				if codepilot_code.command_state_history.len() > 10 {
-					codepilot_code.command_state_history.remove(0);
-				}
 
 			});
 		}

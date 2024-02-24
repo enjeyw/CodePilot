@@ -8,14 +8,17 @@ use bevy::{math::Vec3Swizzles, diagnostic::LogDiagnosticsPlugin};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy_egui::egui::Id;
+use bevy_egui::egui::text_edit::{CursorRange, CCursorRange};
 use components::{
 	CameraMarker, Enemy, Explosion, ExplosionTimer, ExplosionToSpawn, FromEnemy, FromPlayer, Laser, Movable,
 	Player, SpriteSize, Velocity, ScoreText, MaxScoreText, CodePilotActiveText, WeaponChargeBar
 };
 use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
+use events::CompileCodeEvent;
 use rustpython_vm as vm;
 use vm::{builtins::PyCode, PyRef};
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use rand::{Rng, rngs::StdRng, SeedableRng, thread_rng};
 
@@ -28,11 +31,12 @@ use combat::CombatPlugin;
 use post_processing::{PostProcessPlugin, PostProcessSettings};
 use std::{collections::HashSet, f32::consts::PI};
 
+mod components;
+mod events;
 mod autocomplete;
 mod ui;
 mod movement;
 mod post_processing;
-mod components;
 mod enemy;
 mod player;
 mod codepilot;
@@ -98,13 +102,59 @@ struct GameTextures {
 	engine: Handle<TextureAtlas>
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct CommandState {
+	fire: bool,
+	forward: bool,
+	backward: bool,
+	clockwise: bool,
+	counter_clockwise: bool,
+}
+
+impl CommandState {
+	pub fn default() -> Self {
+		Self {
+			fire: false,
+			forward: false,
+			backward: false,
+			clockwise: false,
+			counter_clockwise: false
+		}
+	}
+}
+
+pub type KeyLessDebug = String;
+
+#[derive(Clone)]
+
+pub struct  KeyedDebug {
+	key: String,
+	value: String,
+	has_changed: bool
+}
+
+#[derive(Clone)]
+pub enum PyDebugMessage {
+    KeyLessDebug(KeyLessDebug),
+    KeyedDebug(KeyedDebug),
+}
+
+pub enum CodePilotOutput {
+	DebugMessages(Vec<PyDebugMessage>),
+	CommandState(CommandState)
+}
+
+pub type CodePilotHist = Vec<(f32, CodePilotOutput)>;
+
 #[derive(Resource)]
 pub struct CodePilotCode {
 	raw_code: String,
     compiled: Option<PyRef<PyCode>>,
+	py_result: Option<String>,
+	codepilot_hist: Vec<(f32, CodePilotOutput)>, // time, command state
 	completions: Vec<String>,
 	autocomplete_token: String,
-	cursor_index: Option<usize>,
+	cursor_range: Option<CCursorRange>,
 	selected_completion: usize,
 }
 impl Default for CodePilotCode {
@@ -112,9 +162,11 @@ impl Default for CodePilotCode {
 		Self {
 			raw_code: String::new(),
 			compiled: None,
+			py_result: None,
+			codepilot_hist: Vec::new(),
 			completions: Vec::new(),
 			autocomplete_token: String::new(),
-			cursor_index: None,
+			cursor_range: None,
 			selected_completion: 0
 		}
 	}
@@ -188,6 +240,7 @@ fn main() {
 		.add_plugins(EnemyPlugin)
 		.add_plugins(CombatPlugin)
 		.add_systems(Startup, setup_system)
+        .add_event::<CompileCodeEvent>()
 		.run();
 }
 

@@ -54,6 +54,19 @@ pub struct Ship {
 #[derive(Component)]
 pub struct Shield;
 
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Component)]
+pub enum Allegiance {
+    Friendly,
+    Enemy,
+}
+
+impl Default for Allegiance {
+    fn default() -> Self {
+        Allegiance::Friendly
+    }
+}
+
 // region:    --- Player Components
 #[derive(Component)]
 pub struct Player;
@@ -77,12 +90,24 @@ pub struct Weapon {
 	pub charge_rate: f32,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Component)]
+pub enum WeaponType {
+    Laser,
+    EMP,
+}
+
+impl Default for WeaponType {
+    fn default() -> Self {
+        WeaponType::Laser
+    }
+}
 
 #[derive(Component)]
 pub struct Laser;
 
 #[derive(Component)]
 pub struct EMP;
+
 
 #[derive(Component)]
 pub struct EMPAnimator{

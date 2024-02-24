@@ -1,6 +1,6 @@
 use bevy::{prelude::*, utils::HashSet, sprite::{collide_aabb::collide, MaterialMesh2dBundle, Mesh2dHandle}, render::mesh};
 
-use crate::{PlayerState, WinSize, EnemyCount, components::{SpriteSize, Laser, FromPlayer, Enemy, FromEnemy, Player, ExplosionToSpawn, Explosion, ExplosionTimer, Weapon, Ship, Shield, EMPAnimator, EMP}, GameTextures, EXPLOSION_LEN, CollidedEntities};
+use crate::{PlayerState, WinSize, EnemyCount, components::{SpriteSize, Laser, FromPlayer, Enemy, FromEnemy, Player, ExplosionToSpawn, Explosion, ExplosionTimer, Weapon, Ship, Shield, EMPAnimator, EMP, Allegiance, WeaponType}, GameTextures, EXPLOSION_LEN, CollidedEntities, events::FireWeaponEvent};
 use bevy::prelude::Entity;
 
 pub struct CombatPlugin;
@@ -19,37 +19,6 @@ impl Plugin for CombatPlugin {
         .add_systems(Update, ship_shield_sprite_system)
         .add_systems(Update, emp_animation_system);
     }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Component)]
-pub enum WeaponType {
-    Laser,
-    EMP,
-}
-
-impl Default for WeaponType {
-    fn default() -> Self {
-        WeaponType::Laser
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Component)]
-pub enum Allegiance {
-    Friendly,
-    Enemy,
-}
-
-impl Default for Allegiance {
-    fn default() -> Self {
-        Allegiance::Friendly
-    }
-}
-
-#[derive(Event)]
-pub struct FireWeaponEvent {
-    pub weapon_type: WeaponType,
-    pub weapon_alignment: Allegiance,
-    pub firing_entity: Entity
 }
 
 fn weapon_cooldown_system(

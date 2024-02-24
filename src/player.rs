@@ -1,5 +1,6 @@
-use crate::combat::{FireWeaponEvent, WeaponType, Allegiance, spawn_shield_sprite};
-use crate::components::{FromPlayer, Laser, Movable, Player, SpriteSize, Velocity, ExplosionToSpawn, Enemy, Weapon, Ship, EMP};
+use crate::combat::spawn_shield_sprite;
+use crate::components::{FromPlayer, Laser, Movable, Player, SpriteSize, Velocity, ExplosionToSpawn, Enemy, Weapon, Ship, EMP, Allegiance};
+use crate::events::FireWeaponEvent;
 use crate::{
 	GameTextures, PlayerState, WinSize, PLAYER_LASER_SIZE, PLAYER_RESPAWN_DELAY, PLAYER_SIZE,
 	SPRITE_SCALE, CodePilotCode, enemy
@@ -270,7 +271,7 @@ pub fn accelerate_backward(
 	},));
 }
 
-pub fn accelerate_counterclockwise(
+pub fn accelerate_counter_clockwise(
 	velocity: &mut Velocity,
 	transform: &Transform,
 	ang_acceleration: f32,
@@ -341,7 +342,7 @@ fn player_fire_system(
 			info!("Sending fire EMP event");
 			fire_weapon_event.send({
 				FireWeaponEvent {
-					weapon_type: WeaponType::EMP,
+					weapon_type: crate::components::WeaponType::EMP,
 					weapon_alignment: Allegiance::Friendly,
 					firing_entity: player_ent
 				}
@@ -395,7 +396,7 @@ fn player_keyboard_event_system(
 		}
 
 		if kb.pressed(KeyCode::A) {
-			accelerate_counterclockwise(
+			accelerate_counter_clockwise(
 				&mut velocity, transform, ang_acceleration, max_ang_velocity, heading, heading_perp, &mut commands)
 		}
 

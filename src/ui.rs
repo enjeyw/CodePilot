@@ -1,9 +1,9 @@
 use bevy::prelude::*;
-use bevy_egui::{EguiContexts, egui::{self, Pos2, text_edit::{CCursorRange, CursorRange}, text::CCursor, epaint::text::cursor::Cursor, TextEdit}};
+use bevy_egui::{EguiContexts, egui::{self, Pos2, text_edit::{CCursorRange, CursorRange}, text::CCursor, epaint::text::cursor::{Cursor, self}, TextEdit}};
 
 use egui_extras::syntax_highlighting::highlight;
 
-use crate::{PlayerState, CodePilotCode, components::{CodePilotActiveText, ScoreText, WeaponChargeBar}, autocomplete};
+use crate::{autocomplete, components::{CodePilotActiveText, ScoreText, WeaponChargeBar}, events::CompileCodeEvent, CodePilotCode, CodePilotOutput, PlayerState, PyDebugMessage};
 
 pub struct UIPlugin;
 
@@ -103,8 +103,10 @@ fn ui_setup_system (
 
 fn egui_system(
 	mut codepilot_code: ResMut<CodePilotCode>,
-	mut contexts: EguiContexts) {
-	let ctx = contexts.ctx_mut();
+    mut compile_code_event: EventWriter<CompileCodeEvent>,
+	mut contexts: EguiContexts,
+) {
+    let ctx = contexts.ctx_mut();
 
     // Load these once at the start of your program
     egui::SidePanel::right("right_panel")
@@ -127,18 +129,35 @@ fn egui_system(
                 // https://github.com/emilk/egui/blob/ccbddcfe951e01c55efd0ed19f2f2ab5edfad5d9/egui_demo_lib/src/apps/demo/text_edit.rs
 
                 let prev_raw_code = codepilot_code.raw_code.clone();
-                let prev_cursor_index = codepilot_code.cursor_index.clone();
+                let prev_cursor_range = codepilot_code.cursor_range;
+                let prev_cursor_index = if let Some(cursor_range) = prev_cursor_range {
+                    Some(cursor_range.primary.index)
+                } else {
+                    None
+                };
 
                 let mut ccursor_adjustment: isize = 0;
 
                 // If we escape autocomplete, we need to regain focus on the text box
-                let mut escaped = false;
+                let mut force_focus = false;
+                let mut force_defocus = false;
 
+                // Run code and defocus
+                if ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::COMMAND, egui::Key::Enter)) { 
+                    compile_code_event.send(CompileCodeEvent);
+                    force_defocus = true;
+                }
+
+                // Run code and retain focus
+                if ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::SHIFT, egui::Key::Enter)) { 
+                    compile_code_event.send(CompileCodeEvent);
+                }
+                
                 let completions_len = codepilot_code.completions.len();
                 if completions_len > 0 {
 
                     if ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) { 
-                        escaped = true;
+                        force_focus = true;
                         codepilot_code.completions = Vec::new();
                     }
                     
@@ -150,7 +169,7 @@ fn egui_system(
                         codepilot_code.selected_completion = (codepilot_code.selected_completion - 1) % completions_len;
                     }
 
-                    if let Some(cursor_index) = codepilot_code.cursor_index {
+                    if let Some(cursor_index) = prev_cursor_index {
                         if ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::NONE, egui::Key::Tab)) ||
                             ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter)){ 
                         
@@ -187,8 +206,22 @@ fn egui_system(
                 }
 
                 let newline_requested = ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter));
-                let backspace_requested = ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::NONE, egui::Key::Backspace));
 
+                let mut delete_requested = false;
+                if let Some(cursor_range) = prev_cursor_range {
+
+                    if cursor_range.primary == cursor_range.secondary {
+                        let cursor_index = cursor_range.primary.index;
+                        // if the previous characters are 4X spaces, remove all 4 (it's an indent), otherwise just do a regular backspace 
+                        if codepilot_code.raw_code.clone()[..cursor_index].ends_with("    ") {
+                            if ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::NONE, egui::Key::Backspace)) {
+                                delete_requested = true;
+                            }
+                        }
+                        
+                    }
+                }
+                
                 let mut output = egui::TextEdit::multiline(&mut codepilot_code.raw_code)
                 .font(egui::TextStyle::Monospace) // for cursor height
                 .code_editor()
@@ -200,8 +233,11 @@ fn egui_system(
 
                 let mut response = output.response;
 
-                if escaped {
+                // prioritise focus over defocus in event of both for no particular reason (we shouldn't ever have both)
+                if force_focus {
                     response.request_focus();
+                } else if force_defocus {
+                    response.surrender_focus();
                 }
 
                 let mut loc = response.rect.left_top();                
@@ -210,8 +246,6 @@ fn egui_system(
                 if let Some(text_cursor_range) = output.cursor_range {
                     let cindex: usize = text_cursor_range.primary.ccursor.index;
 
-                    codepilot_code.cursor_index =Some(cindex);
-
                     let cursor_row = text_cursor_range.primary.rcursor.row;
                     let cursor_col = text_cursor_range.primary.rcursor.column;
 
@@ -219,7 +253,7 @@ fn egui_system(
                     let head: &str = &codepilot_code.raw_code.clone()[..cindex];
                     let mut head = head.split(|c| c == '\t' || c == ' ' || c == '\n').collect::<Vec<_>>();
 
-                    if prev_raw_code != codepilot_code.raw_code || codepilot_code.cursor_index != prev_cursor_index {
+                    if prev_raw_code != codepilot_code.raw_code || Some(text_cursor_range.as_ccursor_range()) != prev_cursor_range {
                         if let Some(last) = head.pop() {
                             if last != "" {
                                 let completions = autocomplete::suggest_completions(last, &codepilot_code.raw_code);
@@ -277,18 +311,11 @@ fn egui_system(
                         ccursor_adjustment += (1 + total_tabs_at_start_of_active_line + total_spaces_at_start_of_active_line) as isize;   
                     }
 
-                    if backspace_requested {
-                        // if the previous characters are 4X spaces, remove all 4 (it's an indent), otherwise just do a regular backspace 
-
-                        if codepilot_code.raw_code.clone()[..cindex].ends_with("    ") {
-                            for _ in 0..4 {
-                                codepilot_code.raw_code.remove(cindex - 4);
-                                ccursor_adjustment -= 1;
-                            };
-                        } else {
-                            codepilot_code.raw_code.remove(cindex - 1);
+                    if delete_requested {
+                        for _ in 0..4 {
+                            codepilot_code.raw_code.remove(cindex - 4);
                             ccursor_adjustment -= 1;
-                        }
+                        };
                     }
 
                     if let Some(mut state) = TextEdit::load_state(ui.ctx(),  response.id) {
@@ -298,10 +325,75 @@ fn egui_system(
                                 ccursor_range.secondary = ccursor_range.primary;
                                 state.set_ccursor_range(Some(ccursor_range));
                                 state.store(ui.ctx(), response.id);   
+
                             }
+
+                            codepilot_code.cursor_range = Some(ccursor_range);
                         }
                     }
+
                 };
+
+                if let Some(py_result) = codepilot_code.py_result.clone() {
+                    let cleaned_result = py_result
+                    .replace(r#"File "<embedded>", "#, "")
+                    .replace(r#", in <module>"#, "");
+                    
+                    let mut text = cleaned_result.as_str();
+
+                    egui::TextEdit::multiline(&mut text)
+                    .font(egui::TextStyle::Monospace) // for cursor height
+                    .code_editor()
+                    .desired_width(400.)
+                    .show(ui);
+                }
+
+                let mut text = String::new();
+
+                codepilot_code.codepilot_hist.iter().for_each(|(time, output)| {
+
+                    match output {
+                        CodePilotOutput::CommandState(command) => {
+                            let fire = command.fire;
+
+                            let hist_line = format!("{time:.2} Fire: {fire}");
+                            text.push_str(&hist_line);
+                            text.push_str("\n");
+
+                        }
+                        CodePilotOutput::DebugMessages(py_debug_messages) => {
+
+                            py_debug_messages.iter().for_each(|py_debug_message| {
+
+                                match py_debug_message {
+                                    PyDebugMessage::KeyLessDebug(message) => {
+                                        let hist_line = format!("{time:.2} Debug: {message}");
+                                        text.push_str(&hist_line);
+                                        text.push_str("\n");
+                                    }
+                                    PyDebugMessage::KeyedDebug(message) => {
+                                        if message.has_changed {
+                                            let key = message.key.clone();
+                                            let value = message.value.clone();
+                                            let hist_line = format!("{time:.2} Debug: {key} = {value}");
+                                            text.push_str(&hist_line);
+                                            text.push_str("\n");
+                                        } 
+                                    }
+                                }
+                            });
+                        }
+                    }                    
+
+                });
+
+                ui.label("Command History:");
+                egui::TextEdit::multiline(&mut text.as_str())
+                    .font(egui::TextStyle::Monospace) // for cursor height
+                    .code_editor()
+                    .desired_width(400.)
+                    .show(ui);
+
             });
         });
 

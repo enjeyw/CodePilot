@@ -331,7 +331,10 @@ fn codepilot_event_system(
 					codepilot_code.codepilot_hist.push((time, CodePilotOutput::CommandState(command_state)));
 				};
 
-
+				while codepilot_code.codepilot_hist.len() > 100 {
+					codepilot_code.codepilot_hist.remove(0);
+					
+				} 
 			});
 		}
 	}

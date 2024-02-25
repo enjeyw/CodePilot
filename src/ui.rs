@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use bevy_egui::{EguiContexts, egui::{self, Pos2, text_edit::{CCursorRange, CursorRange}, text::CCursor, epaint::text::cursor::{Cursor, self}, TextEdit}};
+use bevy_egui::{egui::{self, epaint::text::cursor::{self, Cursor}, text::CCursor, text_edit::{CCursorRange, CursorRange}, Color32, Pos2, TextEdit}, EguiContexts};
 
 use egui_extras::syntax_highlighting::highlight;
 
@@ -347,52 +347,73 @@ fn egui_system(
                     .desired_width(400.)
                     .show(ui);
                 }
+                
 
-                let mut text = String::new();
+                ui.heading("Command History:");
+                egui::ScrollArea::vertical()
+                .stick_to_bottom(true)
+                .show(ui, |ui| {
+                    ui.style_mut().spacing.interact_size.y = 0.0; // hack to make `horizontal_wrapped` work better with text.
 
-                codepilot_code.codepilot_hist.iter().for_each(|(time, output)| {
+                    ui.horizontal_wrapped(|ui| {
 
-                    match output {
-                        CodePilotOutput::CommandState(command) => {
-                            let fire = command.fire;
+                        codepilot_code.codepilot_hist.iter().for_each(|(time, output)| {
 
-                            let hist_line = format!("{time:.2} Fire: {fire}");
-                            text.push_str(&hist_line);
-                            text.push_str("\n");
+                            match output {
+                                CodePilotOutput::CommandState(command) => {
+                                    let fire = command.fire;
 
-                        }
-                        CodePilotOutput::DebugMessages(py_debug_messages) => {
-
-                            py_debug_messages.iter().for_each(|py_debug_message| {
-
-                                match py_debug_message {
-                                    PyDebugMessage::KeyLessDebug(message) => {
-                                        let hist_line = format!("{time:.2} Debug: {message}");
-                                        text.push_str(&hist_line);
-                                        text.push_str("\n");
-                                    }
-                                    PyDebugMessage::KeyedDebug(message) => {
-                                        if message.has_changed {
-                                            let key = message.key.clone();
-                                            let value = message.value.clone();
-                                            let hist_line = format!("{time:.2} Debug: {key} = {value}");
-                                            text.push_str(&hist_line);
-                                            text.push_str("\n");
-                                        } 
-                                    }
+                                    ui.colored_label(Color32::from_rgb(0, 0x64, 0), format!("{time:.2} "));
+                                    ui.colored_label(Color32::from_rgb(0xAD, 0xD8, 0xE6), format!("Fire: {fire} \n"));
+                                    // let hist_line = format!("{time:.2} Fire: {fire}");
+                                    // text.push_str(&hist_line);
+                                    // text.push_str("\n");
+        
                                 }
-                            });
-                        }
-                    }                    
+                                CodePilotOutput::DebugMessages(py_debug_messages) => {
+        
+                                    py_debug_messages.iter().for_each(|py_debug_message| {
+        
+                                        match py_debug_message {
+                                            PyDebugMessage::KeyLessDebug(message) => {
 
+                                                // let hist_line = format!("{time:.2} Debug: {message}");
+                                                ui.colored_label(Color32::from_rgb(0, 0x64, 0), format!("{time:.2}"));
+                                                ui.colored_label(Color32::from_rgb(204, 172, 0), format!("{message} \n"));
+
+                                                // text.push_str(&hist_line);
+                                                // text.push_str("\n");
+                                            }
+                                            PyDebugMessage::KeyedDebug(message) => {
+                                                if message.has_changed {
+                                                    let key = message.key.clone();
+                                                    let value = message.value.clone();
+                                                    // let hist_line = format!("{time:.2} Debug: {key} = {value}");
+                                                    ui.colored_label(Color32::from_rgb(0, 0x64, 0), format!("{time:.2}"));
+                                                    ui.colored_label(Color32::from_rgb(190, 140, 0), format!("{key}"));
+                                                    ui.colored_label(Color32::from_rgb(204, 172, 0), format!("{value} \n"));
+                                                    
+
+                                                    // text.push_str(&hist_line);
+                                                    // text.push_str("\n");
+                                                } 
+                                            }
+                                        }
+                                    });
+                                }
+                            }                    
+        
+                        });
+                        
+                    })
+                    
+                    // egui::TextEdit::multiline(&mut text)
+                    //     .font(egui::TextStyle::Monospace) // for cursor height
+                    //     .code_editor()
+                    //     .cursor_at_end(true)
+                    //     .desired_width(f32::INFINITY)
+                    //     .show(ui);
                 });
-
-                ui.label("Command History:");
-                egui::TextEdit::multiline(&mut text.as_str())
-                    .font(egui::TextStyle::Monospace) // for cursor height
-                    .code_editor()
-                    .desired_width(400.)
-                    .show(ui);
 
             });
         });

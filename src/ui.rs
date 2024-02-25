@@ -1,5 +1,5 @@
-use bevy::prelude::*;
-use bevy_egui::{egui::{self, epaint::text::cursor::{self, Cursor}, text::CCursor, text_edit::{CCursorRange, CursorRange}, Color32, Pos2, TextEdit}, EguiContexts};
+use bevy::{prelude::*, ui};
+use bevy_egui::{egui::{self, epaint::text::cursor::{self, Cursor}, text::CCursor, text_edit::{CCursorRange, CursorRange}, Color32, Context, Pos2, TextEdit}, EguiContexts};
 
 use egui_extras::syntax_highlighting::highlight;
 
@@ -100,7 +100,6 @@ fn ui_setup_system (
 	});
 }
 
-
 fn egui_system(
 	mut codepilot_code: ResMut<CodePilotCode>,
     mut compile_code_event: EventWriter<CompileCodeEvent>,
@@ -110,314 +109,331 @@ fn egui_system(
 
     // Load these once at the start of your program
     egui::SidePanel::right("right_panel")
-    	.min_width(400.0)
     	.show(ctx, |ui| {
                 
-            ui.vertical(|ui| {
-    			ui.label("Add Codepilot Code: ");
+            ui.vertical(|ui: &mut egui::Ui| {
+                ui.collapsing("Codepilot Code", |ui| {
+                    ui.set_min_width(400.);
+                    ui.group(|ui| {
+                        codebox_ui(ui, &mut codepilot_code, compile_code_event, &ctx);
+                    });
+                });
+            });
+        });
 
-                
-                let language = "py";
-                let theme = egui_extras::syntax_highlighting::CodeTheme::from_memory(ui.ctx());
+    egui::SidePanel::right("right_panel_2").show(ctx, |ui| {
 
-                let mut layouter = |ui: &egui::Ui, string: &str, _wrap_width: f32| {
-                    let layout_job = highlight(ui.ctx(), &theme, string, language);
-                    // layout_job.wrap.max_width = wrap_width; // no wrapping
-                    ui.fonts(|f| f.layout_job(layout_job))
-                };
+        ui.vertical(|ui: &mut egui::Ui| {
+            ui.collapsing("Command History", |ui| {
+                ui.set_min_width(400.);
 
-                // https://github.com/emilk/egui/blob/ccbddcfe951e01c55efd0ed19f2f2ab5edfad5d9/egui_demo_lib/src/apps/demo/text_edit.rs
-
-                let prev_raw_code = codepilot_code.raw_code.clone();
-                let prev_cursor_range = codepilot_code.cursor_range;
-                let prev_cursor_index = if let Some(cursor_range) = prev_cursor_range {
-                    Some(cursor_range.primary.index)
-                } else {
-                    None
-                };
-
-                let mut ccursor_adjustment: isize = 0;
-
-                // If we escape autocomplete, we need to regain focus on the text box
-                let mut force_focus = false;
-                let mut force_defocus = false;
-
-                // Run code and defocus
-                if ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::COMMAND, egui::Key::Enter)) { 
-                    compile_code_event.send(CompileCodeEvent);
-                    force_defocus = true;
-                }
-
-                // Run code and retain focus
-                if ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::SHIFT, egui::Key::Enter)) { 
-                    compile_code_event.send(CompileCodeEvent);
-                }
-                
-                let completions_len = codepilot_code.completions.len();
-                if completions_len > 0 {
-
-                    if ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) { 
-                        force_focus = true;
-                        codepilot_code.completions = Vec::new();
-                    }
-                    
-                    if ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown)) { 
-                        codepilot_code.selected_completion = (codepilot_code.selected_completion + 1) % completions_len;
-                    }
-
-                    if ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp)) { 
-                        codepilot_code.selected_completion = (codepilot_code.selected_completion - 1) % completions_len;
-                    }
-
-                    if let Some(cursor_index) = prev_cursor_index {
-                        if ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::NONE, egui::Key::Tab)) ||
-                            ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter)){ 
-                        
-                            let completion = codepilot_code.completions[codepilot_code.selected_completion].clone();
-    
-                            //we need to strip the part of the completion that is identical
-                            let mut autocomp_token_len = codepilot_code.autocomplete_token.len();
-    
-                            //now handle the special case of autocompletion of a class function, where only after the dot will be filled
-                            if completion.starts_with(".") {
-                                let split_input = codepilot_code.autocomplete_token.split('.').collect::<Vec<_>>();
-                                let split_input_len = split_input.len();
-    
-                                if split_input_len == 1 {
-                                    //no dot present in input token, which means we're at the end of the class assignment
-                                    autocomp_token_len = 0;
-                                } else {
-                                    autocomp_token_len = split_input[split_input_len - 1].len() + 1;
-                                }
-    
-                            }
-                           
-                            let (first, last) = prev_raw_code.split_at(cursor_index);
-                                let mut new_code: String = first.to_owned();
-                                let completion_to_insert = &completion.as_str()[autocomp_token_len..];
-                                new_code.push_str(completion_to_insert);
-                                new_code.push_str(last);
-    
-                                codepilot_code.raw_code = new_code;
-    
-                                ccursor_adjustment = completion_to_insert.len() as isize;
-                        } 
-                    }
-                }
-
-                let newline_requested = ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter));
-
-                let mut delete_requested = false;
-                if let Some(cursor_range) = prev_cursor_range {
-
-                    if cursor_range.primary == cursor_range.secondary {
-                        let cursor_index = cursor_range.primary.index;
-                        // if the previous characters are 4X spaces, remove all 4 (it's an indent), otherwise just do a regular backspace 
-                        if codepilot_code.raw_code.clone()[..cursor_index].ends_with("    ") {
-                            if ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::NONE, egui::Key::Backspace)) {
-                                delete_requested = true;
-                            }
-                        }
-                        
-                    }
-                }
-                
-                let mut output = egui::TextEdit::multiline(&mut codepilot_code.raw_code)
-                .font(egui::TextStyle::Monospace) // for cursor height
-                .code_editor()
-                .desired_rows(10)
-                .desired_width(400.)
-                .lock_focus(true)
-                .layouter(&mut layouter)
-                .show(ui);
-
-                let mut response = output.response;
-
-                // prioritise focus over defocus in event of both for no particular reason (we shouldn't ever have both)
-                if force_focus {
-                    response.request_focus();
-                } else if force_defocus {
-                    response.surrender_focus();
-                }
-
-                let mut loc = response.rect.left_top();                
-                loc.x += 3.;
-
-                if let Some(text_cursor_range) = output.cursor_range {
-                    let cindex: usize = text_cursor_range.primary.ccursor.index;
-
-                    let cursor_row = text_cursor_range.primary.rcursor.row;
-                    let cursor_col = text_cursor_range.primary.rcursor.column;
-
-                    // split the head on tabs, spaces or newlines
-                    let head: &str = &codepilot_code.raw_code.clone()[..cindex];
-                    let mut head = head.split(|c| c == '\t' || c == ' ' || c == '\n').collect::<Vec<_>>();
-
-                    if prev_raw_code != codepilot_code.raw_code || Some(text_cursor_range.as_ccursor_range()) != prev_cursor_range {
-                        if let Some(last) = head.pop() {
-                            if last != "" {
-                                let completions = autocomplete::suggest_completions(last, &codepilot_code.raw_code);
-                                codepilot_code.completions = completions;
-                                codepilot_code.autocomplete_token = last.to_owned();
-                                codepilot_code.selected_completion = 0;
-                            } else {
-                                codepilot_code.completions = Vec::new();
-                                codepilot_code.selected_completion = 0;
-                                codepilot_code.autocomplete_token = String::new();
-                            }
-                        }
-                    }
-
-                    loc.x += 7. * cursor_col as f32;
-                    loc.y += 14. * (cursor_row as f32 + 1.);
-
-                    if codepilot_code.completions.len() > 0 {
-                        let completions = codepilot_code.completions.clone();
-                        egui::Window::new("Codepilot")
-                            .fixed_pos(loc)
-                            .title_bar(false)
-                            .show(ctx, |ui| {
-                                for (idx, completion) in completions.iter().enumerate() {
-                                    ui.selectable_value(
-                                        &mut codepilot_code.selected_completion,
-                                        idx,
-                                        completion
-                                        );
-                                }
-                            });
-                    }
-
-                    if newline_requested {
-                        // add a newline to the code, with the same indentation as the previous line
-                        let code_lines = codepilot_code.raw_code.split('\n').collect::<Vec<_>>();
-                        let active_line = code_lines[cursor_row].to_owned();
-                        
-                        //supports tab indendation and space indentation but not both at the same time b
-                        let mut total_tabs_at_start_of_active_line = active_line.chars().take_while(|c: &char| *c == '\t').count();
-                        let mut total_spaces_at_start_of_active_line = active_line.chars().take_while(|c: &char| *c ==' ').count();
-
-                        if active_line.ends_with(':') || active_line.ends_with('{') || active_line.ends_with('[') || active_line.ends_with('(') {
-                            if total_tabs_at_start_of_active_line > 0 {
-                                total_tabs_at_start_of_active_line += 1
-                            } else {
-                                total_spaces_at_start_of_active_line += 4
-                            }
-                        }
-
-                        let indent = "\n".to_owned() + &"\t".repeat(total_tabs_at_start_of_active_line) + &" ".repeat(total_spaces_at_start_of_active_line);
-
-                        codepilot_code.raw_code.insert_str(cindex, &indent);
-
-                        ccursor_adjustment += (1 + total_tabs_at_start_of_active_line + total_spaces_at_start_of_active_line) as isize;   
-                    }
-
-                    if delete_requested {
-                        for _ in 0..4 {
-                            codepilot_code.raw_code.remove(cindex - 4);
-                            ccursor_adjustment -= 1;
-                        };
-                    }
-
-                    if let Some(mut state) = TextEdit::load_state(ui.ctx(),  response.id) {
-                        if let Some(mut ccursor_range) = state.ccursor_range() {
-                            if ccursor_adjustment != 0 {
-                                ccursor_range.primary.index = (ccursor_range.primary.index as isize + ccursor_adjustment) as usize;
-                                ccursor_range.secondary = ccursor_range.primary;
-                                state.set_ccursor_range(Some(ccursor_range));
-                                state.store(ui.ctx(), response.id);   
-
-                            }
-
-                            codepilot_code.cursor_range = Some(ccursor_range);
-                        }
-                    }
-
-                };
-
-                if let Some(py_result) = codepilot_code.py_result.clone() {
-                    let cleaned_result = py_result
-                    .replace(r#"File "<embedded>", "#, "")
-                    .replace(r#", in <module>"#, "");
-                    
-                    let mut text = cleaned_result.as_str();
-
-                    egui::TextEdit::multiline(&mut text)
-                    .font(egui::TextStyle::Monospace) // for cursor height
-                    .code_editor()
-                    .desired_width(400.)
-                    .show(ui);
-                }
-                
-
-                ui.heading("Command History:");
                 egui::ScrollArea::vertical()
                 .stick_to_bottom(true)
                 .show(ui, |ui| {
                     ui.style_mut().spacing.interact_size.y = 0.0; // hack to make `horizontal_wrapped` work better with text.
-
                     ui.horizontal_wrapped(|ui| {
-
-                        codepilot_code.codepilot_hist.iter().for_each(|(time, output)| {
-
-                            match output {
-                                CodePilotOutput::CommandState(command) => {
-                                    let fire = command.fire;
-
-                                    ui.colored_label(Color32::from_rgb(0, 0x64, 0), format!("{time:.2} "));
-                                    ui.colored_label(Color32::from_rgb(0xAD, 0xD8, 0xE6), format!("Fire: {fire} \n"));
-                                    // let hist_line = format!("{time:.2} Fire: {fire}");
-                                    // text.push_str(&hist_line);
-                                    // text.push_str("\n");
-        
-                                }
-                                CodePilotOutput::DebugMessages(py_debug_messages) => {
-        
-                                    py_debug_messages.iter().for_each(|py_debug_message| {
-        
-                                        match py_debug_message {
-                                            PyDebugMessage::KeyLessDebug(message) => {
-
-                                                // let hist_line = format!("{time:.2} Debug: {message}");
-                                                ui.colored_label(Color32::from_rgb(0, 0x64, 0), format!("{time:.2}"));
-                                                ui.colored_label(Color32::from_rgb(204, 172, 0), format!("{message} \n"));
-
-                                                // text.push_str(&hist_line);
-                                                // text.push_str("\n");
-                                            }
-                                            PyDebugMessage::KeyedDebug(message) => {
-                                                if message.has_changed {
-                                                    let key = message.key.clone();
-                                                    let value = message.value.clone();
-                                                    // let hist_line = format!("{time:.2} Debug: {key} = {value}");
-                                                    ui.colored_label(Color32::from_rgb(0, 0x64, 0), format!("{time:.2}"));
-                                                    ui.colored_label(Color32::from_rgb(190, 140, 0), format!("{key}"));
-                                                    ui.colored_label(Color32::from_rgb(204, 172, 0), format!("{value} \n"));
-                                                    
-
-                                                    // text.push_str(&hist_line);
-                                                    // text.push_str("\n");
-                                                } 
-                                            }
-                                        }
-                                    });
-                                }
-                            }                    
-        
-                        });
-                        
+                        debug_output_ui(ui, &mut codepilot_code, &ctx);
                     })
-                    
-                    // egui::TextEdit::multiline(&mut text)
-                    //     .font(egui::TextStyle::Monospace) // for cursor height
-                    //     .code_editor()
-                    //     .cursor_at_end(true)
-                    //     .desired_width(f32::INFINITY)
-                    //     .show(ui);
                 });
-
-            });
+            })
         });
 
+    });
+
+
+}
+
+fn debug_output_ui(
+    mut ui: &mut egui::Ui,
+    mut codepilot_code: &mut ResMut<CodePilotCode>,
+	mut ctx: &Context
+) {
+    codepilot_code.codepilot_hist.iter().for_each(|(time, output)| {
+
+        match output {
+            CodePilotOutput::CommandState(command) => {
+                let fire = command.fire;
+
+                ui.colored_label(Color32::from_rgb(0, 0x64, 0), format!("{time:.2} "));
+                ui.colored_label(Color32::from_rgb(0xAD, 0xD8, 0xE6), format!("Fire: {fire} \n"));
+                // let hist_line = format!("{time:.2} Fire: {fire}");
+                // text.push_str(&hist_line);
+                // text.push_str("\n");
+
+            }
+            CodePilotOutput::DebugMessages(py_debug_messages) => {
+
+                py_debug_messages.iter().for_each(|py_debug_message| {
+
+                    match py_debug_message {
+                        PyDebugMessage::KeyLessDebug(message) => {
+
+                            // let hist_line = format!("{time:.2} Debug: {message}");
+                            ui.colored_label(Color32::from_rgb(0, 0x64, 0), format!("{time:.2}"));
+                            ui.colored_label(Color32::from_rgb(204, 172, 0), format!("{message} \n"));
+
+                            // text.push_str(&hist_line);
+                            // text.push_str("\n");
+                        }
+                        PyDebugMessage::KeyedDebug(message) => {
+                            if message.has_changed {
+                                let key = message.key.clone();
+                                let value = message.value.clone();
+                                // let hist_line = format!("{time:.2} Debug: {key} = {value}");
+                                ui.colored_label(Color32::from_rgb(0, 0x64, 0), format!("{time:.2}"));
+                                ui.colored_label(Color32::from_rgb(190, 140, 0), format!("{key}:"));
+                                ui.colored_label(Color32::from_rgb(204, 172, 0), format!("{value} \n"));
+                                
+
+                                // text.push_str(&hist_line);
+                                // text.push_str("\n");
+                            } 
+                        }
+                    }
+                });
+            }
+        }                    
+
+    });
+}
+
+fn codebox_ui(
+    mut ui: &mut egui::Ui,
+    mut codepilot_code: &mut ResMut<CodePilotCode>,
+    mut compile_code_event: EventWriter<CompileCodeEvent>,
+	mut ctx: &Context
+) {    
+    let language = "py";
+    let theme = egui_extras::syntax_highlighting::CodeTheme::from_memory(ui.ctx());
+
+    let mut layouter = |ui: &egui::Ui, string: &str, _wrap_width: f32| {
+        let layout_job = highlight(ui.ctx(), &theme, string, language);
+        // layout_job.wrap.max_width = wrap_width; // no wrapping
+        ui.fonts(|f| f.layout_job(layout_job))
+    };
+
+    // https://github.com/emilk/egui/blob/ccbddcfe951e01c55efd0ed19f2f2ab5edfad5d9/egui_demo_lib/src/apps/demo/text_edit.rs
+
+    let prev_raw_code = codepilot_code.raw_code.clone();
+    let prev_cursor_range = codepilot_code.cursor_range;
+    let prev_cursor_index = if let Some(cursor_range) = prev_cursor_range {
+        Some(cursor_range.primary.index)
+    } else {
+        None
+    };
+
+    let mut ccursor_adjustment: isize = 0;
+
+    // If we escape autocomplete, we need to regain focus on the text box
+    let mut force_focus = false;
+    let mut force_defocus = false;
+
+    // Run code and defocus
+    if ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::COMMAND, egui::Key::Enter)) { 
+        compile_code_event.send(CompileCodeEvent);
+        force_defocus = true;
+    }
+
+    // Run code and retain focus
+    if ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::SHIFT, egui::Key::Enter)) { 
+        compile_code_event.send(CompileCodeEvent);
+    }
+    
+    let completions_len = codepilot_code.completions.len();
+    if completions_len > 0 {
+
+        if ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) { 
+            force_focus = true;
+            codepilot_code.completions = Vec::new();
+        }
+        
+        if ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown)) { 
+            codepilot_code.selected_completion = (codepilot_code.selected_completion + 1) % completions_len;
+        }
+
+        if ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp)) { 
+            codepilot_code.selected_completion = (codepilot_code.selected_completion - 1) % completions_len;
+        }
+
+        if let Some(cursor_index) = prev_cursor_index {
+            if ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::NONE, egui::Key::Tab)) ||
+                ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter)){ 
+            
+                let completion = codepilot_code.completions[codepilot_code.selected_completion].clone();
+
+                //we need to strip the part of the completion that is identical
+                let mut autocomp_token_len = codepilot_code.autocomplete_token.len();
+
+                //now handle the special case of autocompletion of a class function, where only after the dot will be filled
+                if completion.starts_with(".") {
+                    let split_input = codepilot_code.autocomplete_token.split('.').collect::<Vec<_>>();
+                    let split_input_len = split_input.len();
+
+                    if split_input_len == 1 {
+                        //no dot present in input token, which means we're at the end of the class assignment
+                        autocomp_token_len = 0;
+                    } else {
+                        autocomp_token_len = split_input[split_input_len - 1].len() + 1;
+                    }
+
+                }
+                
+                let (first, last) = prev_raw_code.split_at(cursor_index);
+                    let mut new_code: String = first.to_owned();
+                    let completion_to_insert = &completion.as_str()[autocomp_token_len..];
+                    new_code.push_str(completion_to_insert);
+                    new_code.push_str(last);
+
+                    codepilot_code.raw_code = new_code;
+
+                    ccursor_adjustment = completion_to_insert.len() as isize;
+            } 
+        }
+    }
+
+    let newline_requested = ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter));
+
+    let mut delete_requested = false;
+    if let Some(cursor_range) = prev_cursor_range {
+
+        if cursor_range.primary == cursor_range.secondary {
+            let cursor_index = cursor_range.primary.index;
+            // if the previous characters are 4X spaces, remove all 4 (it's an indent), otherwise just do a regular backspace 
+            if codepilot_code.raw_code.clone()[..cursor_index].ends_with("    ") {
+                if ui.input_mut(|i: &mut egui::InputState| i.consume_key(egui::Modifiers::NONE, egui::Key::Backspace)) {
+                    delete_requested = true;
+                }
+            }
+            
+        }
+    }
+    
+    let mut output = egui::TextEdit::multiline(&mut codepilot_code.raw_code)
+    .font(egui::TextStyle::Monospace) // for cursor height
+    .code_editor()
+    .desired_rows(10)
+    .desired_width(400.)
+    .lock_focus(true)
+    .layouter(&mut layouter)
+    .show(ui);
+
+    let mut response = output.response;
+
+    // prioritise focus over defocus in event of both for no particular reason (we shouldn't ever have both)
+    if force_focus {
+        response.request_focus();
+    } else if force_defocus {
+        response.surrender_focus();
+    }
+
+    let mut loc = response.rect.left_top();                
+    loc.x += 3.;
+
+    if let Some(text_cursor_range) = output.cursor_range {
+        let cindex: usize = text_cursor_range.primary.ccursor.index;
+
+        let cursor_row = text_cursor_range.primary.rcursor.row;
+        let cursor_col = text_cursor_range.primary.rcursor.column;
+
+        // split the head on tabs, spaces or newlines
+        let head: &str = &codepilot_code.raw_code.clone()[..cindex];
+        let mut head = head.split(|c| c == '\t' || c == ' ' || c == '\n').collect::<Vec<_>>();
+
+        if prev_raw_code != codepilot_code.raw_code || Some(text_cursor_range.as_ccursor_range()) != prev_cursor_range {
+            if let Some(last) = head.pop() {
+                if last != "" {
+                    let completions = autocomplete::suggest_completions(last, &codepilot_code.raw_code);
+                    codepilot_code.completions = completions;
+                    codepilot_code.autocomplete_token = last.to_owned();
+                    codepilot_code.selected_completion = 0;
+                } else {
+                    codepilot_code.completions = Vec::new();
+                    codepilot_code.selected_completion = 0;
+                    codepilot_code.autocomplete_token = String::new();
+                }
+            }
+        }
+
+        loc.x += 7. * cursor_col as f32;
+        loc.y += 14. * (cursor_row as f32 + 1.);
+
+        if codepilot_code.completions.len() > 0 {
+            let completions = codepilot_code.completions.clone();
+            egui::Window::new("Codepilot")
+                .fixed_pos(loc)
+                .title_bar(false)
+                .show(ctx, |ui| {
+                    for (idx, completion) in completions.iter().enumerate() {
+                        ui.selectable_value(
+                            &mut codepilot_code.selected_completion,
+                            idx,
+                            completion
+                            );
+                    }
+                });
+        }
+
+        if newline_requested {
+            // add a newline to the code, with the same indentation as the previous line
+            let code_lines = codepilot_code.raw_code.split('\n').collect::<Vec<_>>();
+            let active_line = code_lines[cursor_row].to_owned();
+            
+            //supports tab indendation and space indentation but not both at the same time b
+            let mut total_tabs_at_start_of_active_line = active_line.chars().take_while(|c: &char| *c == '\t').count();
+            let mut total_spaces_at_start_of_active_line = active_line.chars().take_while(|c: &char| *c ==' ').count();
+
+            if active_line.ends_with(':') || active_line.ends_with('{') || active_line.ends_with('[') || active_line.ends_with('(') {
+                if total_tabs_at_start_of_active_line > 0 {
+                    total_tabs_at_start_of_active_line += 1
+                } else {
+                    total_spaces_at_start_of_active_line += 4
+                }
+            }
+
+            let indent = "\n".to_owned() + &"\t".repeat(total_tabs_at_start_of_active_line) + &" ".repeat(total_spaces_at_start_of_active_line);
+
+            codepilot_code.raw_code.insert_str(cindex, &indent);
+
+            ccursor_adjustment += (1 + total_tabs_at_start_of_active_line + total_spaces_at_start_of_active_line) as isize;   
+        }
+
+        if delete_requested {
+            for _ in 0..4 {
+                codepilot_code.raw_code.remove(cindex - 4);
+                ccursor_adjustment -= 1;
+            };
+        }
+
+        if let Some(mut state) = TextEdit::load_state(ui.ctx(),  response.id) {
+            if let Some(mut ccursor_range) = state.ccursor_range() {
+                if ccursor_adjustment != 0 {
+                    ccursor_range.primary.index = (ccursor_range.primary.index as isize + ccursor_adjustment) as usize;
+                    ccursor_range.secondary = ccursor_range.primary;
+                    state.set_ccursor_range(Some(ccursor_range));
+                    state.store(ui.ctx(), response.id);   
+
+                }
+
+                codepilot_code.cursor_range = Some(ccursor_range);
+            }
+        }
+
+    };
+
+    if let Some(py_result) = codepilot_code.py_result.clone() {
+        let cleaned_result = py_result
+        .replace(r#"File "<embedded>", "#, "")
+        .replace(r#", in <module>"#, "");
+        
+        let mut text = cleaned_result.as_str();
+
+        egui::TextEdit::multiline(&mut text)
+        .font(egui::TextStyle::Monospace) // for cursor height
+        .code_editor()
+        .desired_width(400.)
+        .show(ui);
+    }
+    
 }
 
 fn spawn_bar(parent: &mut ChildBuilder, asset_server: Res<AssetServer>) {

@@ -3,4 +3,5 @@ Uses:
 - Rust/Bevy
 - RustPython for Python scripting
 
-Base code taken from https://github.com/jeremychone-channel/rust-invaders
+[![Proof of Concept](https://img.youtube.com/vi/rBzXGinCsiE/0.jpg)](https://www.youtube.com/watch?v=rBzXGinCsiE)
+

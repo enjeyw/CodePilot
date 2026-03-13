@@ -3,5 +3,5 @@ Uses:
 - Rust/Bevy
 - RustPython for Python scripting
 
-[![Proof of Concept](https://img.youtube.com/vi/rBzXGinCsiE/0.jpg)](https://www.youtube.com/watch?v=rBzXGinCsiE)
+[![Proof of Concept Video](https://img.youtube.com/vi/rBzXGinCsiE/0.jpg)](https://www.youtube.com/watch?v=rBzXGinCsiE)
 
